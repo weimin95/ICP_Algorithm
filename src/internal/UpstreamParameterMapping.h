@@ -2,17 +2,7 @@
 
 #include <fricp/Types.h>
 
-namespace ICP {
-class Parameters;
-}  // namespace ICP
-
-namespace SICP {
-struct Parameters;
-}  // namespace SICP
-
 namespace fricp::internal {
-
-struct RobustOptions;
 
 enum class IcpRobustFunction {
     None,
@@ -60,11 +50,5 @@ struct LegacyRobustOptionsView {
 
 IcpParameterView DescribeIcpParameters(const RegistrationOptions& options);
 SicpParameterView DescribeSicpParameters(const RegistrationOptions& options);
-LegacyRobustOptionsView DescribeLegacyRobustOptions(
-        const RegistrationOptions& options);
-
-ICP::Parameters BuildIcpParameters(const RegistrationOptions& options);
-SICP::Parameters BuildSicpParameters(const RegistrationOptions& options);
-RobustOptions BuildLegacyRobustOptions(const RegistrationOptions& options);
 
 }  // namespace fricp::internal

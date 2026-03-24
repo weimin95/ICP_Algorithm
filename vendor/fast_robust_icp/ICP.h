@@ -41,7 +41,11 @@ namespace nanoflann {
         index_t* index;
         KDTreeAdaptor(const MatrixType &mat, const int leaf_max_size = 10) : m_data_matrix(mat) {
             const size_t dims = mat.rows();
-            index = new index_t(dims, *this, nanoflann::KDTreeSingleIndexAdaptorParams(leaf_max_size, dims));
+            index = new index_t(
+                    dims, *this,
+                    nanoflann::KDTreeSingleIndexAdaptorParams(
+                            leaf_max_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None,
+                            static_cast<unsigned int>(dims)));
             index->buildIndex();
         }
         ~KDTreeAdaptor() { delete index; }
@@ -50,7 +54,8 @@ namespace nanoflann {
         inline void query(const num_t *query_point, const size_t num_closest, IndexType *out_indices, num_t *out_distances_sq) const {
             nanoflann::KNNResultSet<typename MatrixType::Scalar, IndexType> resultSet(num_closest);
             resultSet.init(out_indices, out_distances_sq);
-            index->findNeighbors(resultSet, query_point, nanoflann::SearchParams());
+            index->findNeighbors(resultSet, query_point,
+                                 nanoflann::SearchParameters());
         }
         /// Query for the closest points to a given point (entered as query_point[0:dim-1]).
         inline IndexType closest(const num_t *query_point) const {

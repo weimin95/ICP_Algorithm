@@ -1,9 +1,5 @@
 #include "internal/UpstreamParameterMapping.h"
 
-#include <fricp/internal/FastRobustCore.h>
-
-#include <ICP.h>
-
 namespace fricp::internal {
 namespace {
 
@@ -78,67 +74,6 @@ SicpParameterView DescribeSicpParameters(const RegistrationOptions& options) {
         view.init_trans = options.initial_transform;
     }
     return view;
-}
-
-LegacyRobustOptionsView DescribeLegacyRobustOptions(
-        const RegistrationOptions& options) {
-    const auto icp_view = DescribeIcpParametersImpl(options);
-    LegacyRobustOptionsView view;
-    view.max_iteration = icp_view.max_icp;
-    view.nu_begin_k = icp_view.nu_begin_k;
-    view.nu_end_k = icp_view.nu_end_k;
-    view.nu_alpha = icp_view.nu_alpha;
-    view.stop = icp_view.stop;
-    view.use_anderson = icp_view.use_AA;
-    return view;
-}
-
-ICP::Parameters BuildIcpParameters(const RegistrationOptions& options) {
-    const auto view = DescribeIcpParameters(options);
-    ICP::Parameters parameters;
-    parameters.p = view.p;
-    parameters.max_icp = view.max_icp;
-    parameters.max_outer = view.max_outer;
-    parameters.stop = view.stop;
-    parameters.anderson_m = view.anderson_m;
-    parameters.beta_ = view.beta;
-    parameters.error_overflow_threshold_ = view.error_overflow_threshold;
-    parameters.nu_begin_k = view.nu_begin_k;
-    parameters.nu_end_k = view.nu_end_k;
-    parameters.nu_alpha = view.nu_alpha;
-    parameters.use_init = view.use_init;
-    parameters.init_trans = view.init_trans;
-    parameters.f = view.f == IcpRobustFunction::Welsch ? ICP::WELSCH : ICP::NONE;
-    parameters.use_AA = view.use_AA;
-    return parameters;
-}
-
-SICP::Parameters BuildSicpParameters(const RegistrationOptions& options) {
-    const auto view = DescribeSicpParameters(options);
-    SICP::Parameters parameters;
-    parameters.use_penalty = view.use_penalty;
-    parameters.p = view.p;
-    parameters.mu = view.mu;
-    parameters.alpha = view.alpha;
-    parameters.max_mu = view.max_mu;
-    parameters.max_icp = view.max_icp;
-    parameters.max_outer = view.max_outer;
-    parameters.max_inner = view.max_inner;
-    parameters.stop = view.stop;
-    parameters.init_trans = view.init_trans;
-    return parameters;
-}
-
-RobustOptions BuildLegacyRobustOptions(const RegistrationOptions& options) {
-    const auto view = DescribeLegacyRobustOptions(options);
-    RobustOptions robust_options;
-    robust_options.max_iteration = view.max_iteration;
-    robust_options.nu_begin_k = view.nu_begin_k;
-    robust_options.nu_end_k = view.nu_end_k;
-    robust_options.nu_alpha = view.nu_alpha;
-    robust_options.stop = view.stop;
-    robust_options.use_anderson = view.use_anderson;
-    return robust_options;
 }
 
 }  // namespace fricp::internal

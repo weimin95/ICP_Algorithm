@@ -412,6 +412,77 @@ void InjectOutliers(open3d::geometry::PointCloud& cloud) {
     }
 }
 
+int TestMethodRecoversKnownTransform(fricp::RegistrationMethod method,
+                                     const open3d::geometry::PointCloud& target,
+                                     const Eigen::Matrix4d& transform,
+                                     double max_correspondence_distance,
+                                     double tolerance,
+                                     bool estimate_target_normals_if_missing = false,
+                                     double normal_radius = 0.1,
+                                     int normal_knn = 30) {
+    open3d::geometry::PointCloud source = target;
+    source.Transform(transform);
+
+    fricp::FastRobustIcp icp;
+    fricp::RegistrationOptions options;
+    fricp::RegistrationResult result;
+
+    options.method = method;
+    options.max_correspondence_distance = max_correspondence_distance;
+    options.max_icp = 100;
+    options.max_outer = 2;
+    options.anderson_m = 5;
+    options.estimate_target_normals_if_missing =
+            estimate_target_normals_if_missing;
+    options.normal_radius = normal_radius;
+    options.normal_knn = normal_knn;
+
+    if (method == fricp::RegistrationMethod::RobustICP ||
+        method == fricp::RegistrationMethod::RobustPointToPlane) {
+        options.max_outer = 2;
+        options.nu_begin_k = 3.0;
+        options.nu_end_k = 1.0 / 6.0;
+        options.nu_alpha = 0.5;
+    }
+
+    if (method == fricp::RegistrationMethod::SparseICP ||
+        method == fricp::RegistrationMethod::SparsePointToPlane) {
+        options.sicp_use_penalty = false;
+        options.sicp_mu = 10.0;
+        options.sicp_alpha = 1.2;
+        options.sicp_max_mu = 1e5;
+        options.sicp_max_icp = 100;
+        options.sicp_max_outer = 100;
+        options.sicp_max_inner = 1;
+        options.sicp_p = 0.4;
+    }
+
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed for method test: "
+                  << icp.GetLastError() << '\n';
+        return 1;
+    }
+
+    if (!icp.Register(source, options, result)) {
+        std::cerr << "expected registration to succeed for method test: "
+                  << icp.GetLastError() << '\n';
+        return 1;
+    }
+
+    const Eigen::Matrix4d expected = transform.inverse();
+    if ((result.transformation - expected).cwiseAbs().maxCoeff() > tolerance) {
+        std::cerr << "expected transform recovery for method test\n";
+        return 1;
+    }
+
+    if (!result.success) {
+        std::cerr << "expected success flag for method test\n";
+        return 1;
+    }
+
+    return 0;
+}
+
 int TestConstructionStartsUntrained() {
     fricp::FastRobustIcp icp;
 
@@ -614,35 +685,21 @@ int TestRejectsPointToPlaneWithoutNormalsWhenDisabled() {
 }
 
 int TestPointToPointRecoversKnownTransform() {
-    open3d::geometry::PointCloud target = MakeCubeCloud();
-    open3d::geometry::PointCloud source = target;
-    source.Transform(MakeKnownTransform());
+    return TestMethodRecoversKnownTransform(fricp::RegistrationMethod::ICP,
+                                            MakeCubeCloud(), MakeKnownTransform(),
+                                            2.0, 1e-2);
+}
 
-    fricp::FastRobustIcp icp;
-    fricp::RegistrationOptions options;
-    fricp::RegistrationResult result;
+int TestAAIcpRecoversKnownTransform() {
+    return TestMethodRecoversKnownTransform(fricp::RegistrationMethod::AAICP,
+                                            MakeCubeCloud(), MakeKnownTransform(),
+                                            2.0, 1e-2);
+}
 
-    options.method = fricp::RegistrationMethod::ICP;
-    options.max_correspondence_distance = 2.0;
-    options.max_icp = 100;
-
-    if (!icp.Train(target, options)) {
-        std::cerr << "expected training to succeed for point-to-point test\n";
-        return 1;
-    }
-
-    if (!icp.Register(source, options, result)) {
-        std::cerr << "expected point-to-point registration success\n";
-        return 1;
-    }
-
-    const Eigen::Matrix4d expected = MakeKnownTransform().inverse();
-    if ((result.transformation - expected).cwiseAbs().maxCoeff() > 1e-2) {
-        std::cerr << "expected point-to-point transform recovery\n";
-        return 1;
-    }
-
-    return 0;
+int TestFastIcpRecoversKnownTransform() {
+    return TestMethodRecoversKnownTransform(fricp::RegistrationMethod::FastICP,
+                                            MakeCubeCloud(), MakeKnownTransform(),
+                                            2.0, 1e-2);
 }
 
 int TestPointToPlaneEstimatesTargetNormals() {
@@ -685,6 +742,40 @@ int TestPointToPlaneEstimatesTargetNormals() {
     }
 
     return 0;
+}
+
+int TestRobustPointToPlaneRecoversKnownTransform() {
+    auto target = MakeLShapeCloud();
+    Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+    transform.block<3, 3>(0, 0) =
+            (Eigen::AngleAxisd(0.12, Eigen::Vector3d::UnitY()) *
+             Eigen::AngleAxisd(-0.08, Eigen::Vector3d::UnitX()))
+                    .toRotationMatrix();
+    transform.block<3, 1>(0, 3) = Eigen::Vector3d(0.04, -0.03, 0.06);
+
+    return TestMethodRecoversKnownTransform(
+            fricp::RegistrationMethod::RobustPointToPlane, target, transform, 0.3,
+            2e-2, true, 0.25, 20);
+}
+
+int TestSparseIcpRecoversKnownTransform() {
+    return TestMethodRecoversKnownTransform(fricp::RegistrationMethod::SparseICP,
+                                            MakeLShapeCloud(), MakeKnownTransform(),
+                                            2.0, 2e-2);
+}
+
+int TestSparsePointToPlaneRecoversKnownTransform() {
+    auto target = MakeLShapeCloud();
+    Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+    transform.block<3, 3>(0, 0) =
+            (Eigen::AngleAxisd(0.12, Eigen::Vector3d::UnitY()) *
+             Eigen::AngleAxisd(-0.08, Eigen::Vector3d::UnitX()))
+                    .toRotationMatrix();
+    transform.block<3, 1>(0, 3) = Eigen::Vector3d(0.04, -0.03, 0.06);
+
+    return TestMethodRecoversKnownTransform(
+            fricp::RegistrationMethod::SparsePointToPlane, target, transform, 0.3,
+            2e-2, true, 0.25, 20);
 }
 
 int TestMoveSemanticsPreserveTrainingState() {
@@ -1076,6 +1167,12 @@ int main() {
     if (TestPointToPointRecoversKnownTransform() != 0) {
         return 1;
     }
+    if (TestAAIcpRecoversKnownTransform() != 0) {
+        return 1;
+    }
+    if (TestFastIcpRecoversKnownTransform() != 0) {
+        return 1;
+    }
     if (TestMoveSemanticsPreserveTrainingState() != 0) {
         return 1;
     }
@@ -1092,6 +1189,15 @@ int main() {
         return 1;
     }
     if (TestPointToPlaneEstimatesTargetNormals() != 0) {
+        return 1;
+    }
+    if (TestRobustPointToPlaneRecoversKnownTransform() != 0) {
+        return 1;
+    }
+    if (TestSparseIcpRecoversKnownTransform() != 0) {
+        return 1;
+    }
+    if (TestSparsePointToPlaneRecoversKnownTransform() != 0) {
         return 1;
     }
     if (TestRobustModeRecoversKnownTransform() != 0) {

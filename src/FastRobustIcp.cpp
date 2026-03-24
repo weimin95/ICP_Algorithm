@@ -1,12 +1,12 @@
 #include <fricp/FastRobustIcp.h>
 
-#include <fricp/internal/FastRobustCore.h>
+#include <FRICP.h>
+#include "internal/Open3DAdapters.h"
 #include <internal/UpstreamParameterMapping.h>
 #include <fricp/internal/TrainedData.h>
 
 #include <open3d/geometry/KDTreeSearchParam.h>
 #include <open3d/pipelines/registration/Registration.h>
-#include <open3d/pipelines/registration/TransformationEstimation.h>
 
 #include <memory>
 
@@ -14,25 +14,98 @@ namespace fricp {
 
 namespace {
 
-constexpr double kLegacyRelativeFitness = 1e-6;
-constexpr double kLegacyRelativeRmse = 1e-6;
-
 bool NeedsTargetNormals(RegistrationMethod method) {
     return method == RegistrationMethod::PointToPlane ||
            method == RegistrationMethod::RobustPointToPlane ||
            method == RegistrationMethod::SparsePointToPlane;
 }
 
-bool UsesCurrentPointToPointPath(RegistrationMethod method) {
-    return method == RegistrationMethod::ICP;
+internal::Matrix3X MakeSourceNormals(const open3d::geometry::PointCloud& cloud,
+                                     Eigen::Index point_count) {
+    if (cloud.normals_.size() == cloud.points_.size() && !cloud.normals_.empty()) {
+        return internal::NormalsToMatrix(cloud);
+    }
+    return internal::Matrix3X::Zero(3, point_count);
 }
 
-bool UsesCurrentPointToPlanePath(RegistrationMethod method) {
-    return method == RegistrationMethod::PointToPlane;
+Eigen::Matrix4d RescaleTranslation(Eigen::Matrix4d transformation,
+                                   double scale) {
+    transformation.block<3, 1>(0, 3) *= scale;
+    return transformation;
 }
 
-bool UsesCurrentRobustPath(RegistrationMethod method) {
-    return method == RegistrationMethod::RobustICP;
+void PopulateResult(const RegistrationOptions& options,
+                    RegistrationMethod method,
+                    const open3d::geometry::PointCloud& source,
+                    const open3d::geometry::PointCloud& target,
+                    const Eigen::Matrix4d& transformation,
+                    double convergence_energy,
+                    int iteration_count,
+                    RegistrationResult& result) {
+    const auto evaluation =
+            open3d::pipelines::registration::EvaluateRegistration(
+                    source, target, options.max_correspondence_distance,
+                    transformation);
+
+    result.success = true;
+    result.method = method;
+    result.transformation = transformation;
+    result.fitness = evaluation.fitness_;
+    result.inlier_rmse = evaluation.inlier_rmse_;
+    result.convergence_energy = convergence_energy;
+    result.iteration_count = iteration_count;
+    result.message = "ok";
+}
+
+bool IsSupportedMethod(RegistrationMethod method) {
+    switch (method) {
+        case RegistrationMethod::ICP:
+        case RegistrationMethod::AAICP:
+        case RegistrationMethod::FastICP:
+        case RegistrationMethod::RobustICP:
+        case RegistrationMethod::PointToPlane:
+        case RegistrationMethod::RobustPointToPlane:
+        case RegistrationMethod::SparseICP:
+        case RegistrationMethod::SparsePointToPlane:
+            return true;
+    }
+    return false;
+}
+
+::ICP::Parameters MakeIcpParameters(const internal::IcpParameterView& view) {
+    ::ICP::Parameters parameters;
+    parameters.p = view.p;
+    parameters.max_icp = view.max_icp;
+    parameters.max_outer = view.max_outer;
+    parameters.stop = view.stop;
+    parameters.anderson_m = view.anderson_m;
+    parameters.beta_ = view.beta;
+    parameters.error_overflow_threshold_ = view.error_overflow_threshold;
+    parameters.nu_begin_k = view.nu_begin_k;
+    parameters.nu_end_k = view.nu_end_k;
+    parameters.nu_alpha = view.nu_alpha;
+    parameters.use_init = view.use_init;
+    parameters.init_trans = view.init_trans;
+    parameters.f = view.f == internal::IcpRobustFunction::Welsch
+                           ? ::ICP::WELSCH
+                           : ::ICP::NONE;
+    parameters.use_AA = view.use_AA;
+    return parameters;
+}
+
+::SICP::Parameters MakeSicpParameters(const internal::SicpParameterView& view) {
+    ::SICP::Parameters parameters;
+    parameters.use_penalty = view.use_penalty;
+    parameters.p = view.p;
+    parameters.mu = view.mu;
+    parameters.alpha = view.alpha;
+    parameters.max_mu = view.max_mu;
+    parameters.max_icp = view.max_icp;
+    parameters.max_outer = view.max_outer;
+    parameters.max_inner = view.max_inner;
+    parameters.stop = view.stop;
+    parameters.init_trans = view.init_trans;
+    return parameters;
 }
 
 }  // namespace
@@ -134,81 +207,134 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
         return false;
     }
 
-    if (UsesCurrentPointToPointPath(options.method)) {
-        const Eigen::Matrix4d init = options.use_initial_transform
-                                             ? options.initial_transform
-                                             : Eigen::Matrix4d::Identity();
-        const open3d::pipelines::registration::ICPConvergenceCriteria criteria(
-                kLegacyRelativeFitness, kLegacyRelativeRmse, options.max_icp);
-        const auto registration =
-                open3d::pipelines::registration::RegistrationICP(
-                        source, target, options.max_correspondence_distance, init,
-                        open3d::pipelines::registration::
-                                TransformationEstimationPointToPoint(false),
-                        criteria);
-
-        last_error_.clear();
-        result.success = true;
-        result.method = options.method;
-        result.transformation = registration.transformation_;
-        result.fitness = registration.fitness_;
-        result.inlier_rmse = registration.inlier_rmse_;
-        result.iteration_count = options.max_icp;
-        result.message = "ok";
-        return true;
+    if (!IsSupportedMethod(options.method)) {
+        last_error_ = "selected method is not implemented in the wrapper";
+        result.message = last_error_;
+        return false;
     }
 
-    if (UsesCurrentPointToPlanePath(options.method)) {
-        const auto& target_with_normals = trained_data_->cached_target_normals;
+    auto source_matrix = internal::PointCloudToMatrix(source);
+    auto target_matrix = internal::PointCloudToMatrix(target);
+    const auto normalization =
+            internal::NormalizeSharedSourceTarget(source_matrix, target_matrix);
+    const Eigen::Matrix4d adapted_initial_transform =
+            options.use_initial_transform
+                    ? internal::AdaptInitialTransform(options.initial_transform,
+                                                      normalization)
+                    : Eigen::Matrix4d::Identity();
 
-        const Eigen::Matrix4d init = options.use_initial_transform
-                                             ? options.initial_transform
-                                             : Eigen::Matrix4d::Identity();
-        const open3d::pipelines::registration::ICPConvergenceCriteria criteria(
-                kLegacyRelativeFitness, kLegacyRelativeRmse, options.max_icp);
-        const auto registration =
-                open3d::pipelines::registration::RegistrationICP(
-                        source, target_with_normals, options.max_correspondence_distance, init,
-                        open3d::pipelines::registration::
-                                TransformationEstimationPointToPlane(),
-                        criteria);
+    auto source_mean = normalization.source_mean;
+    auto target_mean = normalization.target_mean;
 
+    auto finish = [&](const Eigen::Matrix4d& normalized_transform,
+                      double convergence_energy,
+                      int iteration_count) {
+        const auto transformed =
+                RescaleTranslation(normalized_transform, normalization.scale);
+        PopulateResult(options, options.method, source, target, transformed,
+                       convergence_energy, iteration_count, result);
         last_error_.clear();
-        result.success = true;
-        result.method = options.method;
-        result.transformation = registration.transformation_;
-        result.fitness = registration.fitness_;
-        result.inlier_rmse = registration.inlier_rmse_;
-        result.iteration_count = options.max_icp;
-        result.message = "ok";
         return true;
-    }
+    };
 
-    if (UsesCurrentRobustPath(options.method)) {
-        const auto robust_options = internal::BuildLegacyRobustOptions(options);
+    switch (options.method) {
+        case RegistrationMethod::ICP:
+        case RegistrationMethod::FastICP:
+        case RegistrationMethod::RobustICP: {
+            auto parameters = MakeIcpParameters(
+                    internal::DescribeIcpParameters(options));
+            parameters.use_init = options.use_initial_transform;
+            parameters.init_trans = adapted_initial_transform;
+            parameters.f = options.method == RegistrationMethod::RobustICP
+                                   ? ::ICP::WELSCH
+                                   : ::ICP::NONE;
+            parameters.use_AA =
+                    options.method != RegistrationMethod::ICP;
 
-        const auto robust_target_cache =
-                internal::BuildRobustTargetCache(trained_data_->target);
-        const auto robust_result = internal::RegisterRobustPointToPoint(
-                source, robust_target_cache, options.initial_transform,
-                options.use_initial_transform, robust_options);
-        if (!robust_result.success) {
-            last_error_ = robust_result.message;
-            result.message = last_error_;
-            return false;
+            ::FRICP<3> fricp;
+            fricp.point_to_point(source_matrix, target_matrix, source_mean,
+                                 target_mean, parameters);
+            return finish(parameters.res_trans, parameters.convergence_energy,
+                          parameters.convergence_iter);
         }
+        case RegistrationMethod::AAICP: {
+            auto parameters = MakeIcpParameters(
+                    internal::DescribeIcpParameters(options));
+            parameters.use_init = options.use_initial_transform;
+            parameters.init_trans = adapted_initial_transform;
+            parameters.f = ::ICP::NONE;
+            parameters.use_AA = false;
 
-        last_error_.clear();
-        result.success = true;
-        result.method = options.method;
-        result.transformation = robust_result.transformation;
-        result.convergence_energy = robust_result.convergence_energy;
-        result.iteration_count = robust_result.iteration_count;
-        result.message = "ok";
-        return true;
+            ::AAICP::point_to_point_aaicp(source_matrix, target_matrix,
+                                          source_mean, target_mean, parameters);
+            return finish(parameters.res_trans, parameters.convergence_energy,
+                          parameters.convergence_iter);
+        }
+        case RegistrationMethod::PointToPlane:
+        case RegistrationMethod::RobustPointToPlane: {
+            if (trained_data_->cached_target_normals.normals_.empty()) {
+                last_error_ =
+                        "target point cloud normals are required for point-to-plane mode";
+                result.message = last_error_;
+                return false;
+            }
+
+            auto parameters = MakeIcpParameters(
+                    internal::DescribeIcpParameters(options));
+            parameters.use_init = options.use_initial_transform;
+            parameters.init_trans = adapted_initial_transform;
+            parameters.f = options.method == RegistrationMethod::RobustPointToPlane
+                                   ? ::ICP::WELSCH
+                                   : ::ICP::NONE;
+            parameters.use_AA =
+                    options.method == RegistrationMethod::RobustPointToPlane;
+
+            auto source_normals =
+                    MakeSourceNormals(source, source_matrix.cols());
+            auto target_normals =
+                    internal::NormalsToMatrix(trained_data_->cached_target_normals);
+
+            ::FRICP<3> fricp;
+            if (options.method == RegistrationMethod::PointToPlane) {
+                fricp.point_to_plane(source_matrix, target_matrix, source_normals,
+                                    target_normals, source_mean, target_mean,
+                                    parameters);
+            } else {
+                fricp.point_to_plane_GN(source_matrix, target_matrix,
+                                        source_normals, target_normals,
+                                        source_mean, target_mean, parameters);
+            }
+            return finish(parameters.res_trans, parameters.convergence_energy,
+                          parameters.convergence_iter);
+        }
+        case RegistrationMethod::SparseICP:
+        case RegistrationMethod::SparsePointToPlane: {
+            auto parameters = MakeSicpParameters(
+                    internal::DescribeSicpParameters(options));
+            parameters.init_trans = adapted_initial_transform;
+
+            if (options.method == RegistrationMethod::SparseICP) {
+                ::SICP::point_to_point(source_matrix, target_matrix, source_mean,
+                                       target_mean, parameters);
+            } else {
+                if (trained_data_->cached_target_normals.normals_.empty()) {
+                    last_error_ =
+                            "target point cloud normals are required for point-to-plane mode";
+                    result.message = last_error_;
+                    return false;
+                }
+                auto target_normals =
+                        internal::NormalsToMatrix(trained_data_->cached_target_normals);
+                ::SICP::point_to_plane(source_matrix, target_matrix, target_normals,
+                                       source_mean, target_mean, parameters);
+            }
+
+            return finish(parameters.res_trans, parameters.convergence_mse,
+                          parameters.convergence_iter);
+        }
     }
 
-    last_error_ = "selected method is not implemented in the transitional wrapper yet";
+    last_error_ = "selected method is not implemented in the wrapper";
     result.message = last_error_;
     return false;
 }
