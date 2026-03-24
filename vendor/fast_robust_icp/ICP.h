@@ -44,8 +44,8 @@ namespace nanoflann {
             index = new index_t(
                     dims, *this,
                     nanoflann::KDTreeSingleIndexAdaptorParams(
-                            leaf_max_size, nanoflann::KDTreeSingleIndexAdaptorFlags::None,
-                            static_cast<unsigned int>(dims)));
+                            leaf_max_size,
+                            nanoflann::KDTreeSingleIndexAdaptorFlags::None));
             index->buildIndex();
         }
         ~KDTreeAdaptor() { delete index; }
