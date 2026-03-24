@@ -90,8 +90,18 @@ int TestConstructionStartsUntrained() {
 
 int TestFailedTrainLeavesObjectUntrained() {
     fricp::FastRobustIcp icp;
+    const open3d::geometry::PointCloud valid_target = MakeCubeCloud();
     open3d::geometry::PointCloud empty_target;
     fricp::RegistrationOptions options;
+
+    if (!icp.Train(valid_target, options)) {
+        return 1;
+    }
+
+    if (!icp.IsTrained()) {
+        return 1;
+    }
+
     if (icp.Train(empty_target, options)) return 1;
     return icp.IsTrained() ? 1 : 0;
 }
@@ -100,10 +110,27 @@ int TestRetrainOverwritesOldTraining() {
     fricp::FastRobustIcp icp;
     auto first_target = MakeCubeCloud();
     auto second_target = MakeLShapeCloud();
+    auto source = second_target;
     fricp::RegistrationOptions options;
+    fricp::RegistrationResult result;
+
+    options.mode = fricp::RegistrationMode::PointToPoint;
+    options.max_correspondence_distance = 1.0;
+    options.max_iteration = 50;
+
     if (!icp.Train(first_target, options)) return 1;
     if (!icp.Train(second_target, options)) return 1;
-    return icp.IsTrained() ? 0 : 1;
+
+    if (!icp.Register(source, options, result)) {
+        return 1;
+    }
+
+    const Eigen::Matrix4d identity = Eigen::Matrix4d::Identity();
+    if ((result.transformation - identity).cwiseAbs().maxCoeff() > 1e-2) {
+        return 1;
+    }
+
+    return result.fitness > 0.95 ? 0 : 1;
 }
 
 int TestTrainRejectsEmptyTargetLeavesInstanceUntrained() {

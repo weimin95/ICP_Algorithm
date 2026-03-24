@@ -36,14 +36,6 @@ bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
     trained_data->mode = options.mode;
     trained_data->options = options;
     trained_data->target = target;
-    trained_data->target_with_normals = target;
-    if (options.mode == RegistrationMode::PointToPlane &&
-        trained_data->target_with_normals.normals_.empty() &&
-        options.estimate_target_normals_if_missing) {
-        trained_data->target_with_normals.EstimateNormals(
-                open3d::geometry::KDTreeSearchParamHybrid(options.normal_radius,
-                                                          options.normal_knn));
-    }
 
     trained_data_ = std::move(trained_data);
     last_error_.clear();
