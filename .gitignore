@@ -1,6 +1,7 @@
 build/
 .deps/
 .vs/
+docs/plans/
 *.user
 *.VC.db
 *.VC.opendb
