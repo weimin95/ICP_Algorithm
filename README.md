@@ -1,16 +1,21 @@
 # fricp
 
-`fricp` is a Windows C++ DLL wrapper around Open3D ICP and the
-Fast-Robust-ICP point-to-point robust registration strategy.
+`fricp` is a Windows C++ DLL wrapper around Open3D ICP and the upstream
+Fast-Robust-ICP registration methods.
 
 ## Features
 
 - Exported C++ class API: `fricp::FastRobustIcp`
 - Input type: `open3d::geometry::PointCloud`
-- Modes:
-  - `PointToPoint`
+- Methods:
+  - `ICP`
+  - `AAICP`
+  - `FastICP`
+  - `RobustICP`
   - `PointToPlane`
-  - `RobustPointToPoint`
+  - `RobustPointToPlane`
+  - `SparseICP`
+  - `SparsePointToPlane`
 
 ## Requirements
 
@@ -63,6 +68,8 @@ fricp::FastRobustIcp icp;
 fricp::RegistrationOptions options;
 fricp::RegistrationResult result;
 
+options.method = fricp::RegistrationMethod::RobustICP;
+
 if (!icp.Train(target_cloud, options)) {
     // handle training failure
 }
@@ -75,7 +82,7 @@ The API returns:
 - success / failure
 - estimated `Eigen::Matrix4d`
 - fitness and inlier RMSE for standard ICP modes
-- convergence energy for robust mode
+- convergence energy for robust modes
 - descriptive error message on failure
 
 Lifecycle helpers:
@@ -85,6 +92,14 @@ Lifecycle helpers:
 - `IsTrained()` reports whether a target is currently cached.
 - `ClearTraining()` discards the cached target and resets the trained state.
 
+`RegistrationOptions` is a single unified options struct. It covers the
+shared ICP controls, the sparse ICP controls, and the target-normal
+preprocessing controls for point-to-plane modes.
+
+For `PointToPlane`, `RobustPointToPlane`, and `SparsePointToPlane`, the
+wrapper automatically estimates target normals during `Train(...)` when they
+are missing and `estimate_target_normals_if_missing` is enabled.
+
 ## Example
 
 See:
@@ -92,8 +107,8 @@ See:
 - `examples/register_example.cpp`
 
 The example trains once on a target cloud, then registers a source cloud
-against that trained target. This is the intended pattern for repeated
-registrations against one target without retraining.
+against that trained target. It keeps the file-based load, downsample, and
+write flow in place while using the final wrapper API.
 
 Build target:
 
