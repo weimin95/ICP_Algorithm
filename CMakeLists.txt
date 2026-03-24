@@ -27,9 +27,23 @@ if(MSVC AND NOT EXISTS "${Open3D_DIR}/Open3DTargets-debug.cmake")
         "when building Debug on Windows.")
 endif()
 
-add_library(fricp SHARED
+set(FRICP_SOURCES
     src/FastRobustIcp.cpp
     src/internal/FastRobustCore.cpp
+)
+
+set(FRICP_HEADERS
+    include/fricp/Export.h
+    include/fricp/FastRobustIcp.h
+    include/fricp/Types.h
+    include/fricp/internal/AndersonAcceleration.h
+    include/fricp/internal/FastRobustCore.h
+    include/fricp/internal/TrainedData.h
+)
+
+add_library(fricp SHARED
+    ${FRICP_SOURCES}
+    ${FRICP_HEADERS}
 )
 
 target_include_directories(fricp
