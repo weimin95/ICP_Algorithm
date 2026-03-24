@@ -1,5 +1,8 @@
 #include <fricp/FastRobustIcp.h>
 #include <internal/Open3DAdapters.h>
+#include <internal/UpstreamParameterMapping.h>
+
+#include <ICP.h>
 
 #include <Eigen/Geometry>
 
@@ -269,6 +272,104 @@ int TestInitialTransformAdaptationMatchesUpstreamRule() {
 
     if ((adapted.block<3, 1>(0, 3) - expected_translation).norm() > 1e-12) {
         std::cerr << "expected upstream initial-transform adaptation\n";
+        return 1;
+    }
+
+    return 0;
+}
+
+int TestIcpParameterMappingCapturesPublicOptions() {
+    fricp::RegistrationOptions options;
+    options.method = fricp::RegistrationMethod::RobustICP;
+    options.use_initial_transform = true;
+    options.initial_transform = Eigen::Matrix4d::Identity();
+    options.initial_transform.block<3, 3>(0, 0) =
+            Eigen::AngleAxisd(0.25, Eigen::Vector3d::UnitY()).toRotationMatrix();
+    options.stop = 1e-6;
+    options.max_icp = 33;
+    options.max_outer = 2;
+    options.anderson_m = 7;
+    options.beta = 0.8;
+    options.error_overflow_threshold = 0.02;
+    options.nu_begin_k = 4.0;
+    options.nu_end_k = 0.2;
+    options.nu_alpha = 0.4;
+
+    const auto mapped = fricp::internal::BuildIcpParameters(options);
+
+    if (!mapped.use_init) {
+        std::cerr << "expected init transform to be enabled\n";
+        return 1;
+    }
+    if ((mapped.init_trans - options.initial_transform).cwiseAbs().maxCoeff() > 1e-12) {
+        std::cerr << "expected init transform to be copied verbatim\n";
+        return 1;
+    }
+    if (mapped.stop != options.stop || mapped.max_icp != options.max_icp ||
+        mapped.max_outer != options.max_outer || mapped.anderson_m != options.anderson_m ||
+        mapped.beta_ != options.beta ||
+        mapped.error_overflow_threshold_ != options.error_overflow_threshold) {
+        std::cerr << "expected scalar ICP options to map directly\n";
+        return 1;
+    }
+    if (mapped.f != ::ICP::WELSCH || !mapped.use_AA) {
+        std::cerr << "expected robust ICP defaults for method dispatch\n";
+        return 1;
+    }
+    if (mapped.nu_begin_k != options.nu_begin_k ||
+        mapped.nu_end_k != options.nu_end_k ||
+        mapped.nu_alpha != options.nu_alpha) {
+        std::cerr << "expected nu parameters to map directly for RobustICP\n";
+        return 1;
+    }
+
+    return 0;
+}
+
+int TestIcpParameterMappingAppliesPointToPlaneNuEndDefault() {
+    fricp::RegistrationOptions options;
+    options.method = fricp::RegistrationMethod::RobustPointToPlane;
+
+    const auto mapped = fricp::internal::BuildIcpParameters(options);
+    const double expected_default = 1.0 / 6.0;
+
+    if (std::abs(mapped.nu_end_k - expected_default) > 1e-12) {
+        std::cerr << "expected point-to-plane robust nu_end_k default\n";
+        return 1;
+    }
+
+    return 0;
+}
+
+int TestSicpParameterMappingCapturesPublicOptions() {
+    fricp::RegistrationOptions options;
+    options.method = fricp::RegistrationMethod::SparseICP;
+    options.use_initial_transform = true;
+    options.initial_transform = Eigen::Matrix4d::Identity();
+    options.initial_transform.block<3, 3>(0, 0) =
+            Eigen::AngleAxisd(-0.5, Eigen::Vector3d::UnitX()).toRotationMatrix();
+    options.stop = 1e-7;
+    options.sicp_use_penalty = true;
+    options.sicp_mu = 12.0;
+    options.sicp_alpha = 1.5;
+    options.sicp_max_mu = 1e6;
+    options.sicp_max_icp = 80;
+    options.sicp_max_outer = 30;
+    options.sicp_max_inner = 4;
+    options.sicp_p = 0.3;
+
+    const auto mapped = fricp::internal::BuildSicpParameters(options);
+
+    if ((mapped.init_trans - options.initial_transform).cwiseAbs().maxCoeff() > 1e-12) {
+        std::cerr << "expected SICP init transform to be copied verbatim\n";
+        return 1;
+    }
+    if (mapped.stop != options.stop || mapped.use_penalty != options.sicp_use_penalty ||
+        mapped.mu != options.sicp_mu || mapped.alpha != options.sicp_alpha ||
+        mapped.max_mu != options.sicp_max_mu || mapped.max_icp != options.sicp_max_icp ||
+        mapped.max_outer != options.sicp_max_outer ||
+        mapped.max_inner != options.sicp_max_inner || mapped.p != options.sicp_p) {
+        std::cerr << "expected sparse ICP options to map directly\n";
         return 1;
     }
 
@@ -915,6 +1016,15 @@ int main() {
         return 1;
     }
     if (TestInitialTransformAdaptationMatchesUpstreamRule() != 0) {
+        return 1;
+    }
+    if (TestIcpParameterMappingCapturesPublicOptions() != 0) {
+        return 1;
+    }
+    if (TestIcpParameterMappingAppliesPointToPlaneNuEndDefault() != 0) {
+        return 1;
+    }
+    if (TestSicpParameterMappingCapturesPublicOptions() != 0) {
         return 1;
     }
     if (TestConstructionStartsUntrained() != 0) {

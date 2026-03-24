@@ -30,8 +30,8 @@ endif()
 set(FRICP_SOURCES
     src/FastRobustIcp.cpp
     src/internal/Open3DAdapters.cpp
+    src/internal/UpstreamParameterMapping.cpp
     src/internal/FastRobustCore.cpp
-    src/vendor_include_probe.cpp
 )
 
 set(FRICP_HEADERS
@@ -42,6 +42,7 @@ set(FRICP_HEADERS
     include/fricp/internal/FastRobustCore.h
     include/fricp/internal/TrainedData.h
     src/internal/Open3DAdapters.h
+    src/internal/UpstreamParameterMapping.h
 )
 
 add_library(fricp SHARED
@@ -94,6 +95,7 @@ target_link_libraries(fricp_tests
 target_include_directories(fricp_tests
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/fast_robust_icp
 )
 
 fricp_copy_runtime_dlls(fricp_tests)

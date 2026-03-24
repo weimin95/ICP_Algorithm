@@ -1,6 +1,7 @@
 #include <fricp/FastRobustIcp.h>
 
 #include <fricp/internal/FastRobustCore.h>
+#include <internal/UpstreamParameterMapping.h>
 #include <fricp/internal/TrainedData.h>
 
 #include <open3d/geometry/KDTreeSearchParam.h>
@@ -184,13 +185,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
     }
 
     if (UsesCurrentRobustPath(options.method)) {
-        internal::RobustOptions robust_options;
-        robust_options.max_iteration = options.max_icp;
-        robust_options.nu_begin_k = options.nu_begin_k;
-        robust_options.nu_end_k = options.nu_end_k;
-        robust_options.nu_alpha = options.nu_alpha;
-        robust_options.stop = options.stop;
-        robust_options.use_anderson = true;
+        const auto robust_options = internal::BuildLegacyRobustOptions(options);
 
         const auto robust_target_cache =
                 internal::BuildRobustTargetCache(trained_data_->target);
