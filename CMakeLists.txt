@@ -31,7 +31,6 @@ set(FRICP_SOURCES
     src/FastRobustIcp.cpp
     src/internal/Open3DAdapters.cpp
     src/internal/UpstreamParameterMapping.cpp
-    src/internal/FastRobustCore.cpp
     src/vendor_include_probe.cpp
 )
 
@@ -40,7 +39,6 @@ set(FRICP_HEADERS
     include/fricp/FastRobustIcp.h
     include/fricp/Types.h
     include/fricp/internal/AndersonAcceleration.h
-    include/fricp/internal/FastRobustCore.h
     include/fricp/internal/TrainedData.h
     src/internal/Open3DAdapters.h
     src/internal/UpstreamParameterMapping.h
