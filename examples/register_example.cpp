@@ -23,7 +23,12 @@ int main() {
     options.max_iteration = 50;
 
     fricp::RegistrationResult result;
-    if (!icp.Register(source, target, options, result)) {
+    if (!icp.Train(target, options)) {
+        std::cerr << "training failed: " << icp.GetLastError() << '\n';
+        return 1;
+    }
+
+    if (!icp.Register(source, options, result)) {
         std::cerr << "registration failed: " << result.message << '\n';
         return 1;
     }

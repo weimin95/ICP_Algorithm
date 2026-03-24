@@ -63,7 +63,11 @@ fricp::FastRobustIcp icp;
 fricp::RegistrationOptions options;
 fricp::RegistrationResult result;
 
-const bool ok = icp.Register(source_cloud, target_cloud, options, result);
+if (!icp.Train(target_cloud, options)) {
+    // handle training failure
+}
+
+const bool ok = icp.Register(source_cloud, options, result);
 ```
 
 The API returns:
@@ -74,11 +78,22 @@ The API returns:
 - convergence energy for robust mode
 - descriptive error message on failure
 
+Lifecycle helpers:
+
+- `Train(...)` caches a target cloud and its derived data for later registrations.
+- `Register(...)` uses the cached target to align each source cloud.
+- `IsTrained()` reports whether a target is currently cached.
+- `ClearTraining()` discards the cached target and resets the trained state.
+
 ## Example
 
 See:
 
 - `examples/register_example.cpp`
+
+The example trains once on a target cloud, then registers a source cloud
+against that trained target. This is the intended pattern for repeated
+registrations against one target without retraining.
 
 Build target:
 
