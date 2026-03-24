@@ -659,6 +659,46 @@ int TestPointToPlaneTrainOnceRegisterTwice() {
     return (!result_a.success || !result_b.success) ? 1 : 0;
 }
 
+int TestTrainCachesAutoEstimatedNormalsForRegister() {
+    fricp::FastRobustIcp icp;
+    auto target = MakeLShapeCloud();
+    auto source = target;
+
+    Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+    transform.block<3, 1>(0, 3) = Eigen::Vector3d(0.02, -0.01, 0.03);
+    source.Transform(transform);
+
+    fricp::RegistrationOptions train_options;
+    train_options.method = fricp::RegistrationMethod::PointToPlane;
+    train_options.max_correspondence_distance = 0.3;
+    train_options.estimate_target_normals_if_missing = true;
+    train_options.normal_radius = 0.25;
+    train_options.normal_knn = 20;
+
+    fricp::RegistrationOptions register_options = train_options;
+    register_options.estimate_target_normals_if_missing = false;
+
+    fricp::RegistrationResult result;
+
+    if (!icp.Train(target, train_options)) {
+        std::cerr << "expected training to auto-estimate target normals\n";
+        return 1;
+    }
+
+    if (!icp.IsTrained()) {
+        std::cerr << "expected trained state after auto-estimated Train\n";
+        return 1;
+    }
+
+    if (!icp.Register(source, register_options, result)) {
+        std::cerr << "expected cached normals to support later register: "
+                  << icp.GetLastError() << '\n';
+        return 1;
+    }
+
+    return result.success ? 0 : 1;
+}
+
 int TestPointToPlaneRegisterFailsAfterPointToPointTraining() {
     fricp::FastRobustIcp icp;
     auto target = MakeCubeCloud();
@@ -914,6 +954,9 @@ int main() {
         return 1;
     }
     if (TestPointToPlaneTrainOnceRegisterTwice() != 0) {
+        return 1;
+    }
+    if (TestTrainCachesAutoEstimatedNormalsForRegister() != 0) {
         return 1;
     }
     if (TestPointToPlaneRegisterFailsAfterPointToPointTraining() != 0) {

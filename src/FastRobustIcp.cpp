@@ -66,17 +66,18 @@ bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
     trained_data->options = options;
     trained_data->target = target;
 
-    if (UsesCurrentRobustPath(options.method)) {
-        trained_data->robust_target_cache =
-                internal::BuildRobustTargetCache(target);
-    }
-
     if (NeedsTargetNormals(options.method)) {
-        trained_data->target_with_normals = target;
-        if (trained_data->target_with_normals.normals_.empty()) {
-            trained_data->target_with_normals.EstimateNormals(
+        trained_data->cached_target_normals = target;
+        if (trained_data->cached_target_normals.normals_.empty()) {
+            trained_data->cached_target_normals.EstimateNormals(
                     open3d::geometry::KDTreeSearchParamHybrid(
                             options.normal_radius, options.normal_knn));
+        }
+        if (trained_data->cached_target_normals.normals_.empty()) {
+            last_error_ =
+                    "target point cloud normals could not be estimated";
+            ClearTraining();
+            return false;
         }
     }
 
@@ -125,7 +126,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
     }
 
     if (NeedsTargetNormals(options.method) &&
-        trained_data_->target_with_normals.normals_.empty()) {
+        trained_data_->cached_target_normals.normals_.empty()) {
         last_error_ =
                 "target point cloud normals are required for point-to-plane mode";
         result.message = last_error_;
@@ -157,7 +158,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
     }
 
     if (UsesCurrentPointToPlanePath(options.method)) {
-        const auto& target_with_normals = trained_data_->target_with_normals;
+        const auto& target_with_normals = trained_data_->cached_target_normals;
 
         const Eigen::Matrix4d init = options.use_initial_transform
                                              ? options.initial_transform
@@ -191,8 +192,10 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
         robust_options.stop = options.stop;
         robust_options.use_anderson = true;
 
+        const auto robust_target_cache =
+                internal::BuildRobustTargetCache(trained_data_->target);
         const auto robust_result = internal::RegisterRobustPointToPoint(
-                source, trained_data_->robust_target_cache, options.initial_transform,
+                source, robust_target_cache, options.initial_transform,
                 options.use_initial_transform, robust_options);
         if (!robust_result.success) {
             last_error_ = robust_result.message;
