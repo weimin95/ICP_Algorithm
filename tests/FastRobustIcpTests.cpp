@@ -1,7 +1,10 @@
 #include <fricp/FastRobustIcp.h>
+#include <internal/Open3DAdapters.h>
 
 #include <Eigen/Geometry>
 
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <type_traits>
 #include <utility>
@@ -123,6 +126,153 @@ open3d::geometry::PointCloud MakeBoxGridCloud() {
         }
     }
     return cloud;
+}
+
+open3d::geometry::PointCloud MakeAdapterSourceCloud() {
+    open3d::geometry::PointCloud cloud;
+    cloud.points_ = {
+            {1.0, 2.0, 3.0},
+            {5.0, 2.0, 3.0},
+            {1.0, 6.0, 3.0},
+    };
+    cloud.normals_ = {
+            {1.0, 0.0, 0.0},
+            {0.0, 1.0, 0.0},
+            {0.0, 0.0, 1.0},
+    };
+    return cloud;
+}
+
+open3d::geometry::PointCloud MakeAdapterTargetCloud() {
+    open3d::geometry::PointCloud cloud;
+    cloud.points_ = {
+            {2.0, -1.0, 0.0},
+            {4.0, -1.0, 0.0},
+            {2.0, 1.0, 0.0},
+    };
+    cloud.normals_ = {
+            {0.0, 1.0, 0.0},
+            {0.0, 1.0, 0.0},
+            {0.0, 1.0, 0.0},
+    };
+    return cloud;
+}
+
+int TestPointCloudAndNormalAdapters() {
+    const auto cloud = MakeAdapterSourceCloud();
+    const auto points = fricp::internal::PointCloudToMatrix(cloud);
+    const auto normals = fricp::internal::NormalsToMatrix(cloud);
+
+    if (points.rows() != 3 || points.cols() != 3) {
+        std::cerr << "expected 3x3 point matrix\n";
+        return 1;
+    }
+
+    if (normals.rows() != 3 || normals.cols() != 3) {
+        std::cerr << "expected 3x3 normal matrix\n";
+        return 1;
+    }
+
+    if ((points.col(0) - Eigen::Vector3d(1.0, 2.0, 3.0)).norm() > 1e-12) {
+        std::cerr << "expected first point to preserve ordering\n";
+        return 1;
+    }
+
+    if ((normals.col(2) - Eigen::Vector3d(0.0, 0.0, 1.0)).norm() > 1e-12) {
+        std::cerr << "expected third normal to preserve ordering\n";
+        return 1;
+    }
+
+    return 0;
+}
+
+int TestBoundingBoxAndNormalizationAdapters() {
+    auto source = fricp::internal::PointCloudToMatrix(MakeAdapterSourceCloud());
+    auto target = fricp::internal::PointCloudToMatrix(MakeAdapterTargetCloud());
+
+    const auto source_stats =
+            fricp::internal::ComputeBoundingBoxStatistics(source);
+    const auto target_stats =
+            fricp::internal::ComputeBoundingBoxStatistics(target);
+
+    if ((source_stats.min_bound - Eigen::Vector3d(1.0, 2.0, 3.0)).norm() > 1e-12) {
+        std::cerr << "expected source min bound\n";
+        return 1;
+    }
+    if ((source_stats.extent - Eigen::Vector3d(4.0, 4.0, 0.0)).norm() > 1e-12) {
+        std::cerr << "expected source extent\n";
+        return 1;
+    }
+    if ((target_stats.max_bound - Eigen::Vector3d(4.0, 1.0, 0.0)).norm() > 1e-12) {
+        std::cerr << "expected target max bound\n";
+        return 1;
+    }
+
+    const auto normalization =
+            fricp::internal::NormalizeSharedSourceTarget(source, target);
+
+    const double expected_scale = std::max(
+            Eigen::Vector3d(4.0, 4.0, 0.0).norm(),
+            Eigen::Vector3d(2.0, 2.0, 0.0).norm());
+    if (std::abs(normalization.scale - expected_scale) > 1e-12) {
+        std::cerr << "expected upstream shared scale\n";
+        return 1;
+    }
+
+    if (source.rowwise().sum().norm() > 1e-12 ||
+        target.rowwise().sum().norm() > 1e-12) {
+        std::cerr << "expected centered point matrices\n";
+        return 1;
+    }
+
+    const Eigen::Vector3d expected_source_mean =
+            Eigen::Vector3d(7.0 / 3.0, 10.0 / 3.0, 3.0) / expected_scale;
+    const Eigen::Vector3d expected_target_mean =
+            Eigen::Vector3d(8.0 / 3.0, -1.0 / 3.0, 0.0) / expected_scale;
+    if ((normalization.source_mean - expected_source_mean).norm() > 1e-12) {
+        std::cerr << "expected scaled source mean\n";
+        return 1;
+    }
+    if ((normalization.target_mean - expected_target_mean).norm() > 1e-12) {
+        std::cerr << "expected scaled target mean\n";
+        return 1;
+    }
+
+    return 0;
+}
+
+int TestInitialTransformAdaptationMatchesUpstreamRule() {
+    auto source = fricp::internal::PointCloudToMatrix(MakeAdapterSourceCloud());
+    auto target = fricp::internal::PointCloudToMatrix(MakeAdapterTargetCloud());
+    const auto normalization =
+            fricp::internal::NormalizeSharedSourceTarget(source, target);
+
+    Eigen::Matrix4d initial = Eigen::Matrix4d::Identity();
+    initial.block<3, 3>(0, 0) =
+            Eigen::AngleAxisd(3.14159265358979323846 / 2.0,
+                              Eigen::Vector3d::UnitZ())
+                    .toRotationMatrix();
+    initial.block<3, 1>(0, 3) = Eigen::Vector3d(3.0, 6.0, 9.0);
+
+    const Eigen::Matrix4d adapted =
+            fricp::internal::AdaptInitialTransform(initial, normalization);
+
+    const Eigen::Vector3d expected_translation =
+            initial.block<3, 1>(0, 3) / normalization.scale +
+            initial.block<3, 3>(0, 0) * normalization.source_mean -
+            normalization.target_mean;
+
+    if ((adapted.block<3, 3>(0, 0) - initial.block<3, 3>(0, 0)).norm() > 1e-12) {
+        std::cerr << "expected rotation to remain unchanged\n";
+        return 1;
+    }
+
+    if ((adapted.block<3, 1>(0, 3) - expected_translation).norm() > 1e-12) {
+        std::cerr << "expected upstream initial-transform adaptation\n";
+        return 1;
+    }
+
+    return 0;
 }
 
 void InjectOutliers(open3d::geometry::PointCloud& cloud) {
@@ -716,6 +866,15 @@ int main() {
         return 1;
     }
     if (TestOptionsExposeUpstreamAlignedFields() != 0) {
+        return 1;
+    }
+    if (TestPointCloudAndNormalAdapters() != 0) {
+        return 1;
+    }
+    if (TestBoundingBoxAndNormalizationAdapters() != 0) {
+        return 1;
+    }
+    if (TestInitialTransformAdaptationMatchesUpstreamRule() != 0) {
         return 1;
     }
     if (TestConstructionStartsUntrained() != 0) {
