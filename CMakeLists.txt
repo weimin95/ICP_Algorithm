@@ -30,6 +30,7 @@ endif()
 set(FRICP_SOURCES
     src/FastRobustIcp.cpp
     src/internal/FastRobustCore.cpp
+    src/vendor_include_probe.cpp
 )
 
 set(FRICP_HEADERS
@@ -49,6 +50,8 @@ add_library(fricp SHARED
 target_include_directories(fricp
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/fast_robust_icp
 )
 
 target_link_libraries(fricp
