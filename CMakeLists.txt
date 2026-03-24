@@ -86,6 +86,7 @@ fricp_copy_runtime_dlls(fricp)
 add_executable(fricp_tests
     tests/FastRobustIcpTests.cpp
     src/internal/Open3DAdapters.cpp
+    src/internal/UpstreamParameterMapping.cpp
 )
 
 target_link_libraries(fricp_tests

@@ -2,8 +2,6 @@
 #include <internal/Open3DAdapters.h>
 #include <internal/UpstreamParameterMapping.h>
 
-#include <ICP.h>
-
 #include <Eigen/Geometry>
 
 #include <algorithm>
@@ -295,7 +293,7 @@ int TestIcpParameterMappingCapturesPublicOptions() {
     options.nu_end_k = 0.2;
     options.nu_alpha = 0.4;
 
-    const auto mapped = fricp::internal::BuildIcpParameters(options);
+    const auto mapped = fricp::internal::DescribeIcpParameters(options);
 
     if (!mapped.use_init) {
         std::cerr << "expected init transform to be enabled\n";
@@ -307,12 +305,13 @@ int TestIcpParameterMappingCapturesPublicOptions() {
     }
     if (mapped.stop != options.stop || mapped.max_icp != options.max_icp ||
         mapped.max_outer != options.max_outer || mapped.anderson_m != options.anderson_m ||
-        mapped.beta_ != options.beta ||
-        mapped.error_overflow_threshold_ != options.error_overflow_threshold) {
+        mapped.beta != options.beta ||
+        mapped.error_overflow_threshold != options.error_overflow_threshold) {
         std::cerr << "expected scalar ICP options to map directly\n";
         return 1;
     }
-    if (mapped.f != ::ICP::WELSCH || !mapped.use_AA) {
+    if (mapped.f != fricp::internal::IcpRobustFunction::Welsch ||
+        !mapped.use_AA) {
         std::cerr << "expected robust ICP defaults for method dispatch\n";
         return 1;
     }
@@ -330,7 +329,7 @@ int TestIcpParameterMappingAppliesPointToPlaneNuEndDefault() {
     fricp::RegistrationOptions options;
     options.method = fricp::RegistrationMethod::RobustPointToPlane;
 
-    const auto mapped = fricp::internal::BuildIcpParameters(options);
+    const auto mapped = fricp::internal::DescribeIcpParameters(options);
     const double expected_default = 1.0 / 6.0;
 
     if (std::abs(mapped.nu_end_k - expected_default) > 1e-12) {
@@ -358,7 +357,7 @@ int TestSicpParameterMappingCapturesPublicOptions() {
     options.sicp_max_inner = 4;
     options.sicp_p = 0.3;
 
-    const auto mapped = fricp::internal::BuildSicpParameters(options);
+    const auto mapped = fricp::internal::DescribeSicpParameters(options);
 
     if ((mapped.init_trans - options.initial_transform).cwiseAbs().maxCoeff() > 1e-12) {
         std::cerr << "expected SICP init transform to be copied verbatim\n";
@@ -383,7 +382,7 @@ int TestSicpParameterMappingLeavesDefaultInitWhenDisabled() {
     options.initial_transform = Eigen::Matrix4d::Identity();
     options.initial_transform.block<3, 1>(0, 3) = Eigen::Vector3d(3.0, 4.0, 5.0);
 
-    const auto mapped = fricp::internal::BuildSicpParameters(options);
+    const auto mapped = fricp::internal::DescribeSicpParameters(options);
 
     if ((mapped.init_trans - Eigen::Matrix4d::Identity()).cwiseAbs().maxCoeff() > 1e-12) {
         std::cerr << "expected default SICP init transform when disabled\n";
