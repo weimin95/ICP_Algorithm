@@ -77,28 +77,94 @@ void InjectOutliers(open3d::geometry::PointCloud& cloud) {
     }
 }
 
-int TestRejectsEmptyPointClouds() {
+int TestConstructionStartsUntrained() {
     fricp::FastRobustIcp icp;
-    open3d::geometry::PointCloud source;
-    open3d::geometry::PointCloud target;
-    fricp::RegistrationOptions options;
-    fricp::RegistrationResult result;
 
-    const bool ok = icp.Register(source, target, options, result);
-    if (ok) {
-        std::cerr << "expected empty-point-cloud validation failure\n";
-        return 1;
-    }
-
-    if (result.message.empty()) {
-        std::cerr << "expected a descriptive error message\n";
+    if (icp.IsTrained()) {
+        std::cerr << "expected a freshly constructed instance to be untrained\n";
         return 1;
     }
 
     return 0;
 }
 
-int TestRejectsInvalidDistance() {
+int TestTrainRejectsEmptyTargetLeavesInstanceUntrained() {
+    fricp::FastRobustIcp icp;
+    const open3d::geometry::PointCloud target;
+    fricp::RegistrationOptions options;
+
+    const bool ok = icp.Train(target, options);
+    if (ok) {
+        std::cerr << "expected empty-point-cloud training failure\n";
+        return 1;
+    }
+
+    if (icp.GetLastError().find("empty") == std::string::npos) {
+        std::cerr << "expected an error message mentioning empty point clouds\n";
+        return 1;
+    }
+
+    if (icp.IsTrained()) {
+        std::cerr << "expected failed Train to leave the instance untrained\n";
+        return 1;
+    }
+
+    return 0;
+}
+
+int TestRegisterFailsWhenNotTrained() {
+    fricp::FastRobustIcp icp;
+    const open3d::geometry::PointCloud source = MakeCubeCloud();
+    fricp::RegistrationOptions options;
+    fricp::RegistrationResult result;
+
+    const bool ok = icp.Register(source, options, result);
+    if (ok) {
+        std::cerr << "expected register failure before training\n";
+        return 1;
+    }
+
+    if (result.message.find("Train") == std::string::npos) {
+        std::cerr << "expected an error message mentioning Train\n";
+        return 1;
+    }
+
+    return 0;
+}
+
+int TestRegisterRejectsEmptySourceAfterTraining() {
+    fricp::FastRobustIcp icp;
+    const open3d::geometry::PointCloud target = MakeCubeCloud();
+    open3d::geometry::PointCloud source;
+    fricp::RegistrationOptions options;
+    fricp::RegistrationResult result;
+
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed before empty-source registration\n";
+        return 1;
+    }
+
+    if (!icp.IsTrained()) {
+        std::cerr << "expected trained state after successful Train\n";
+        return 1;
+    }
+
+    const bool ok = icp.Register(source, options, result);
+    if (ok) {
+        std::cerr << "expected empty-source register failure after training\n";
+        return 1;
+    }
+
+    if (result.message.find("empty") == std::string::npos &&
+        result.message.find("source") == std::string::npos) {
+        std::cerr << "expected an error message mentioning empty source data\n";
+        return 1;
+    }
+
+    return 0;
+}
+
+int TestRegisterRejectsInvalidDistanceAfterTraining() {
     fricp::FastRobustIcp icp;
     open3d::geometry::PointCloud source;
     open3d::geometry::PointCloud target;
@@ -107,9 +173,22 @@ int TestRejectsInvalidDistance() {
 
     source.points_.push_back({0.0, 0.0, 0.0});
     target.points_.push_back({0.0, 0.0, 0.0});
+
+    // Train validates target-dependent inputs only.
+    // Register validates call-time values such as max_correspondence_distance.
     options.max_correspondence_distance = 0.0;
 
-    if (icp.Register(source, target, options, result)) {
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed with register-time distance value\n";
+        return 1;
+    }
+
+    if (!icp.IsTrained()) {
+        std::cerr << "expected trained state after successful Train\n";
+        return 1;
+    }
+
+    if (icp.Register(source, options, result)) {
         std::cerr << "expected invalid max_correspondence_distance failure\n";
         return 1;
     }
@@ -124,23 +203,30 @@ int TestRejectsInvalidDistance() {
 
 int TestRejectsPointToPlaneWithoutNormalsWhenDisabled() {
     fricp::FastRobustIcp icp;
-    open3d::geometry::PointCloud source;
     open3d::geometry::PointCloud target;
-    fricp::RegistrationOptions options;
-    fricp::RegistrationResult result;
 
-    source.points_.push_back({0.0, 0.0, 0.0});
     target.points_.push_back({0.0, 0.0, 0.0});
+    fricp::RegistrationOptions options;
     options.mode = fricp::RegistrationMode::PointToPlane;
     options.estimate_target_normals_if_missing = false;
 
-    if (icp.Register(source, target, options, result)) {
-        std::cerr << "expected point-to-plane normals validation failure\n";
+    if (icp.IsTrained()) {
+        std::cerr << "expected a fresh instance to start untrained\n";
         return 1;
     }
 
-    if (result.message.find("normals") == std::string::npos) {
+    if (icp.Train(target, options)) {
+        std::cerr << "expected point-to-plane training failure without normals\n";
+        return 1;
+    }
+
+    if (icp.GetLastError().find("normals") == std::string::npos) {
         std::cerr << "expected normals error message\n";
+        return 1;
+    }
+
+    if (icp.IsTrained()) {
+        std::cerr << "expected failed Train to leave the instance untrained\n";
         return 1;
     }
 
@@ -160,7 +246,12 @@ int TestPointToPointRecoversKnownTransform() {
     options.max_correspondence_distance = 2.0;
     options.max_iteration = 100;
 
-    if (!icp.Register(source, target, options, result)) {
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed for point-to-point test\n";
+        return 1;
+    }
+
+    if (!icp.Register(source, options, result)) {
         std::cerr << "expected point-to-point registration success\n";
         return 1;
     }
@@ -197,7 +288,12 @@ int TestPointToPlaneEstimatesTargetNormals() {
     options.normal_radius = 0.25;
     options.normal_knn = 20;
 
-    if (!icp.Register(source, target, options, result)) {
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed for point-to-plane test\n";
+        return 1;
+    }
+
+    if (!icp.Register(source, options, result)) {
         std::cerr << "expected point-to-plane registration success\n";
         return 1;
     }
@@ -224,7 +320,12 @@ int TestRobustModeRecoversKnownTransform() {
     options.max_correspondence_distance = 2.0;
     options.max_iteration = 100;
 
-    if (!icp.Register(source, target, options, result)) {
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed for robust test\n";
+        return 1;
+    }
+
+    if (!icp.Register(source, options, result)) {
         std::cerr << "expected robust registration success\n";
         return 1;
     }
@@ -256,11 +357,20 @@ int TestRobustModeBeatsPointToPointWithOutliers() {
     fricp::RegistrationOptions robust_options = point_to_point_options;
     robust_options.mode = fricp::RegistrationMode::RobustPointToPoint;
 
-    if (!icp.Register(source, target, point_to_point_options, point_to_point_result)) {
+    if (!icp.Train(target, point_to_point_options)) {
+        std::cerr << "expected training to succeed for outlier point-to-point test\n";
+        return 1;
+    }
+
+    if (!icp.Register(source, point_to_point_options, point_to_point_result)) {
         std::cerr << "expected point-to-point success on outlier case\n";
         return 1;
     }
-    if (!icp.Register(source, target, robust_options, robust_result)) {
+    if (!icp.Train(target, robust_options)) {
+        std::cerr << "expected training to succeed for outlier robust test\n";
+        return 1;
+    }
+    if (!icp.Register(source, robust_options, robust_result)) {
         std::cerr << "expected robust success on outlier case\n";
         return 1;
     }
@@ -277,13 +387,49 @@ int TestRobustModeBeatsPointToPointWithOutliers() {
     return 0;
 }
 
+int TestTrainSetsTrainedState() {
+    fricp::FastRobustIcp icp;
+    const open3d::geometry::PointCloud target = MakeCubeCloud();
+    fricp::RegistrationOptions options;
+
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed for state test\n";
+        return 1;
+    }
+
+    if (!icp.IsTrained()) {
+        std::cerr << "expected trained state after Train\n";
+        return 1;
+    }
+
+    icp.ClearTraining();
+    if (icp.IsTrained()) {
+        std::cerr << "expected untrained state after ClearTraining\n";
+        return 1;
+    }
+
+    return 0;
+}
+
 }  // namespace
 
 int main() {
-    if (TestRejectsEmptyPointClouds() != 0) {
+    if (TestConstructionStartsUntrained() != 0) {
         return 1;
     }
-    if (TestRejectsInvalidDistance() != 0) {
+    if (TestTrainRejectsEmptyTargetLeavesInstanceUntrained() != 0) {
+        return 1;
+    }
+    if (TestRegisterFailsWhenNotTrained() != 0) {
+        return 1;
+    }
+    if (TestRegisterRejectsEmptySourceAfterTraining() != 0) {
+        return 1;
+    }
+    if (TestRegisterRejectsInvalidDistanceAfterTraining() != 0) {
+        return 1;
+    }
+    if (TestTrainSetsTrainedState() != 0) {
         return 1;
     }
     if (TestRejectsPointToPlaneWithoutNormalsWhenDisabled() != 0) {

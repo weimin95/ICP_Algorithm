@@ -11,8 +11,12 @@ public:
     FastRobustIcp();
     ~FastRobustIcp();
 
+    bool Train(const open3d::geometry::PointCloud& target,
+               const RegistrationOptions& options);
+    void ClearTraining();
+    bool IsTrained() const;
+
     bool Register(const open3d::geometry::PointCloud& source,
-                  const open3d::geometry::PointCloud& target,
                   const RegistrationOptions& options,
                   RegistrationResult& result) const;
 
@@ -20,6 +24,9 @@ public:
 
 private:
     mutable std::string last_error_;
+    open3d::geometry::PointCloud trained_target_;
+    RegistrationOptions trained_options_;
+    bool is_trained_ = false;
 };
 
 }  // namespace fricp
