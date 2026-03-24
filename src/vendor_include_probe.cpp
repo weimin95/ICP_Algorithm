@@ -1,1 +1,1 @@
-#include <vendor/fast_robust_icp/FRICP.h>
+#include <vendor/fast_robust_icp/nanoflann.hpp>

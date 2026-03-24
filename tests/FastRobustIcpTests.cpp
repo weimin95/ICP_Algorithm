@@ -376,6 +376,23 @@ int TestSicpParameterMappingCapturesPublicOptions() {
     return 0;
 }
 
+int TestSicpParameterMappingLeavesDefaultInitWhenDisabled() {
+    fricp::RegistrationOptions options;
+    options.method = fricp::RegistrationMethod::SparseICP;
+    options.use_initial_transform = false;
+    options.initial_transform = Eigen::Matrix4d::Identity();
+    options.initial_transform.block<3, 1>(0, 3) = Eigen::Vector3d(3.0, 4.0, 5.0);
+
+    const auto mapped = fricp::internal::BuildSicpParameters(options);
+
+    if ((mapped.init_trans - Eigen::Matrix4d::Identity()).cwiseAbs().maxCoeff() > 1e-12) {
+        std::cerr << "expected default SICP init transform when disabled\n";
+        return 1;
+    }
+
+    return 0;
+}
+
 void InjectOutliers(open3d::geometry::PointCloud& cloud) {
     const std::vector<Eigen::Vector3d> outliers = {
             {3.0, 3.0, 3.0},
@@ -1025,6 +1042,9 @@ int main() {
         return 1;
     }
     if (TestSicpParameterMappingCapturesPublicOptions() != 0) {
+        return 1;
+    }
+    if (TestSicpParameterMappingLeavesDefaultInitWhenDisabled() != 0) {
         return 1;
     }
     if (TestConstructionStartsUntrained() != 0) {

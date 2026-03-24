@@ -70,7 +70,9 @@ SICP::Parameters BuildSicpParameters(const RegistrationOptions& options) {
     parameters.max_outer = options.sicp_max_outer;
     parameters.max_inner = options.sicp_max_inner;
     parameters.stop = options.stop;
-    parameters.init_trans = options.initial_transform;
+    if (options.use_initial_transform) {
+        parameters.init_trans = options.initial_transform;
+    }
     return parameters;
 }
 

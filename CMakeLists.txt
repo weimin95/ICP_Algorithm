@@ -32,6 +32,7 @@ set(FRICP_SOURCES
     src/internal/Open3DAdapters.cpp
     src/internal/UpstreamParameterMapping.cpp
     src/internal/FastRobustCore.cpp
+    src/vendor_include_probe.cpp
 )
 
 set(FRICP_HEADERS
