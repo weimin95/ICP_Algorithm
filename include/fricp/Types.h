@@ -19,6 +19,7 @@ enum class RegistrationMethod {
 
 struct RegistrationOptions {
     RegistrationMethod method = RegistrationMethod::RobustICP;
+    // Wrapper-only validation/result evaluation for upstream methods.
     double max_correspondence_distance = 0.05;
 
     bool use_initial_transform = false;
