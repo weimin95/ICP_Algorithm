@@ -39,15 +39,6 @@ struct SicpParameterView {
     Eigen::Matrix4d init_trans = Eigen::Matrix4d::Identity();
 };
 
-struct LegacyRobustOptionsView {
-    int max_iteration = 0;
-    double nu_begin_k = 0.0;
-    double nu_end_k = 0.0;
-    double nu_alpha = 0.0;
-    double stop = 0.0;
-    bool use_anderson = false;
-};
-
 IcpParameterView DescribeIcpParameters(const RegistrationOptions& options);
 SicpParameterView DescribeSicpParameters(const RegistrationOptions& options);
 
