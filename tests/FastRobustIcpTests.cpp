@@ -159,6 +159,20 @@ open3d::geometry::PointCloud MakeAdapterTargetCloud() {
     return cloud;
 }
 
+open3d::geometry::PointCloud MakeMalformedNormalsCloud() {
+    open3d::geometry::PointCloud cloud;
+    cloud.points_ = {
+            {0.0, 0.0, 0.0},
+            {1.0, 0.0, 0.0},
+            {0.0, 1.0, 0.0},
+    };
+    cloud.normals_ = {
+            {0.0, 0.0, 1.0},
+            {0.0, 1.0, 0.0},
+    };
+    return cloud;
+}
+
 int TestPointCloudAndNormalAdapters() {
     const auto cloud = MakeAdapterSourceCloud();
     const auto points = fricp::internal::PointCloudToMatrix(cloud);
@@ -684,6 +698,26 @@ int TestRejectsPointToPlaneWithoutNormalsWhenDisabled() {
     return 0;
 }
 
+int TestRejectsMalformedTargetNormalsForPointToPlane() {
+    fricp::FastRobustIcp icp;
+    fricp::RegistrationOptions options;
+    options.method = fricp::RegistrationMethod::PointToPlane;
+    options.estimate_target_normals_if_missing = true;
+
+    const auto target = MakeMalformedNormalsCloud();
+    if (icp.Train(target, options)) {
+        std::cerr << "expected training failure for malformed normals buffer\n";
+        return 1;
+    }
+
+    if (icp.GetLastError().find("match the point count") == std::string::npos) {
+        std::cerr << "expected normals size validation error message\n";
+        return 1;
+    }
+
+    return 0;
+}
+
 int TestPointToPointRecoversKnownTransform() {
     return TestMethodRecoversKnownTransform(fricp::RegistrationMethod::ICP,
                                             MakeCubeCloud(), MakeKnownTransform(),
@@ -1162,6 +1196,9 @@ int main() {
         return 1;
     }
     if (TestRejectsPointToPlaneWithoutNormalsWhenDisabled() != 0) {
+        return 1;
+    }
+    if (TestRejectsMalformedTargetNormalsForPointToPlane() != 0) {
         return 1;
     }
     if (TestPointToPointRecoversKnownTransform() != 0) {

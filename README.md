@@ -99,6 +99,9 @@ preprocessing controls for point-to-plane modes.
 For `PointToPlane`, `RobustPointToPlane`, and `SparsePointToPlane`, the
 wrapper automatically estimates target normals during `Train(...)` when they
 are missing and `estimate_target_normals_if_missing` is enabled.
+`max_correspondence_distance` is used by the wrapper for input validation and
+for Open3D-side result evaluation; it is not a native cutoff parameter in the
+vendored upstream solvers.
 
 ## Example
 

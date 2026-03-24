@@ -20,6 +20,11 @@ bool NeedsTargetNormals(RegistrationMethod method) {
            method == RegistrationMethod::SparsePointToPlane;
 }
 
+bool HasMatchingNormals(const open3d::geometry::PointCloud& cloud) {
+    return cloud.normals_.empty() ||
+           cloud.normals_.size() == cloud.points_.size();
+}
+
 internal::Matrix3X MakeSourceNormals(const open3d::geometry::PointCloud& cloud,
                                      Eigen::Index point_count) {
     if (cloud.normals_.size() == cloud.points_.size() && !cloud.normals_.empty()) {
@@ -134,6 +139,13 @@ bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
         return false;
     }
 
+    if (NeedsTargetNormals(options.method) && !HasMatchingNormals(target)) {
+        last_error_ =
+                "target point cloud normals must be empty or match the point count";
+        ClearTraining();
+        return false;
+    }
+
     auto trained_data = std::make_unique<internal::TrainedData>();
     trained_data->is_trained = true;
     trained_data->method = options.method;
@@ -203,6 +215,14 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
         trained_data_->cached_target_normals.normals_.empty()) {
         last_error_ =
                 "target point cloud normals are required for point-to-plane mode";
+        result.message = last_error_;
+        return false;
+    }
+
+    if (NeedsTargetNormals(options.method) &&
+        !HasMatchingNormals(trained_data_->cached_target_normals)) {
+        last_error_ =
+                "target point cloud normals must be empty or match the point count";
         result.message = last_error_;
         return false;
     }
