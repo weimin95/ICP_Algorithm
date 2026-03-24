@@ -11,6 +11,7 @@ struct TrainedData {
     RegistrationMode mode = RegistrationMode::PointToPoint;
     RegistrationOptions options;
     open3d::geometry::PointCloud target;
+    // Cached target cloud for point-to-plane registration.
     open3d::geometry::PointCloud target_with_normals;
 };
 

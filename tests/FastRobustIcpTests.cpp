@@ -352,6 +352,68 @@ int TestPointToPlaneEstimatesTargetNormals() {
     return 0;
 }
 
+int TestPointToPlaneTrainOnceRegisterTwice() {
+    auto target = MakeLShapeCloud();
+    auto source_a = target;
+    auto source_b = target;
+
+    Eigen::Matrix4d ta = Eigen::Matrix4d::Identity();
+    ta.block<3, 1>(0, 3) = Eigen::Vector3d(0.03, -0.02, 0.04);
+    source_a.Transform(ta);
+
+    Eigen::Matrix4d tb = Eigen::Matrix4d::Identity();
+    tb.block<3, 1>(0, 3) = Eigen::Vector3d(-0.02, 0.01, 0.05);
+    source_b.Transform(tb);
+
+    fricp::FastRobustIcp icp;
+    fricp::RegistrationOptions train_options;
+    train_options.mode = fricp::RegistrationMode::PointToPlane;
+    train_options.max_correspondence_distance = 0.3;
+    train_options.estimate_target_normals_if_missing = true;
+    train_options.normal_radius = 0.25;
+    train_options.normal_knn = 20;
+
+    fricp::RegistrationOptions register_options;
+    register_options.mode = fricp::RegistrationMode::PointToPlane;
+    register_options.max_correspondence_distance = 0.3;
+    register_options.estimate_target_normals_if_missing = false;
+
+    fricp::RegistrationResult result_a;
+    fricp::RegistrationResult result_b;
+
+    if (!icp.Train(target, train_options)) {
+        std::cerr << "expected point-to-plane training to succeed\n";
+        return 1;
+    }
+    if (!icp.Register(source_a, register_options, result_a)) {
+        std::cerr << "expected first point-to-plane registration to succeed: "
+                  << icp.GetLastError() << '\n';
+        return 1;
+    }
+    if (!icp.Register(source_b, register_options, result_b)) {
+        std::cerr << "expected second point-to-plane registration to succeed: "
+                  << icp.GetLastError() << '\n';
+        return 1;
+    }
+    return (!result_a.success || !result_b.success) ? 1 : 0;
+}
+
+int TestPointToPlaneRegisterFailsAfterPointToPointTraining() {
+    fricp::FastRobustIcp icp;
+    auto target = MakeCubeCloud();
+    auto source = target;
+    fricp::RegistrationOptions train_options;
+    train_options.mode = fricp::RegistrationMode::PointToPoint;
+    fricp::RegistrationOptions register_options;
+    register_options.mode = fricp::RegistrationMode::PointToPlane;
+    register_options.max_correspondence_distance = 1.0;
+    fricp::RegistrationResult result;
+
+    if (!icp.Train(target, train_options)) return 1;
+    if (icp.Register(source, register_options, result)) return 1;
+    return result.message.find("mode") == std::string::npos;
+}
+
 int TestRobustModeRecoversKnownTransform() {
     open3d::geometry::PointCloud target = MakeCubeCloud();
     open3d::geometry::PointCloud source = target;
@@ -524,6 +586,12 @@ int main() {
         return 1;
     }
     if (TestPointToPointRegisterRejectsModeMismatch() != 0) {
+        return 1;
+    }
+    if (TestPointToPlaneTrainOnceRegisterTwice() != 0) {
+        return 1;
+    }
+    if (TestPointToPlaneRegisterFailsAfterPointToPointTraining() != 0) {
         return 1;
     }
     if (TestPointToPlaneEstimatesTargetNormals() != 0) {

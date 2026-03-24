@@ -37,6 +37,15 @@ bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
     trained_data->options = options;
     trained_data->target = target;
 
+    if (options.mode == RegistrationMode::PointToPlane) {
+        trained_data->target_with_normals = target;
+        if (trained_data->target_with_normals.normals_.empty()) {
+            trained_data->target_with_normals.EstimateNormals(
+                    open3d::geometry::KDTreeSearchParamHybrid(
+                            options.normal_radius, options.normal_knn));
+        }
+    }
+
     trained_data_ = std::move(trained_data);
     last_error_.clear();
     return true;
@@ -82,8 +91,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
     }
 
     if (options.mode == RegistrationMode::PointToPlane &&
-        target.normals_.empty() &&
-        !options.estimate_target_normals_if_missing) {
+        trained_data_->target_with_normals.normals_.empty()) {
         last_error_ =
                 "target point cloud normals are required for point-to-plane mode";
         result.message = last_error_;
@@ -115,12 +123,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
     }
 
     if (options.mode == RegistrationMode::PointToPlane) {
-        open3d::geometry::PointCloud target_copy = trained_data_->target_with_normals;
-        if (target_copy.normals_.empty()) {
-            target_copy = target;
-            target_copy.EstimateNormals(open3d::geometry::KDTreeSearchParamHybrid(
-                    options.normal_radius, options.normal_knn));
-        }
+        const auto& target_with_normals = trained_data_->target_with_normals;
 
         const Eigen::Matrix4d init = options.use_initial_transform
                                              ? options.initial_transform
@@ -129,7 +132,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
                 options.relative_fitness, options.relative_rmse, options.max_iteration);
         const auto registration =
                 open3d::pipelines::registration::RegistrationICP(
-                        source, target_copy, options.max_correspondence_distance, init,
+                        source, target_with_normals, options.max_correspondence_distance, init,
                         open3d::pipelines::registration::
                                 TransformationEstimationPointToPlane(),
                         criteria);
