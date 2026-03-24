@@ -3,6 +3,14 @@
 #include <Eigen/Geometry>
 
 #include <iostream>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+static_assert(!std::is_copy_constructible_v<fricp::FastRobustIcp>);
+static_assert(!std::is_copy_assignable_v<fricp::FastRobustIcp>);
+static_assert(std::is_move_constructible_v<fricp::FastRobustIcp>);
+static_assert(std::is_move_assignable_v<fricp::FastRobustIcp>);
 
 namespace {
 
@@ -352,6 +360,49 @@ int TestPointToPlaneEstimatesTargetNormals() {
     return 0;
 }
 
+int TestMoveSemanticsPreserveTrainingState() {
+    fricp::FastRobustIcp icp;
+    const open3d::geometry::PointCloud target = MakeCubeCloud();
+    open3d::geometry::PointCloud source = target;
+    source.Transform(MakeKnownTransform());
+    fricp::RegistrationOptions options;
+    fricp::RegistrationResult result;
+
+    options.mode = fricp::RegistrationMode::PointToPoint;
+    options.max_correspondence_distance = 2.0;
+    options.max_iteration = 100;
+
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed before move construction\n";
+        return 1;
+    }
+
+    fricp::FastRobustIcp moved = std::move(icp);
+    if (!moved.IsTrained()) {
+        std::cerr << "expected move construction to preserve training state\n";
+        return 1;
+    }
+
+    if (!moved.Register(source, options, result)) {
+        std::cerr << "expected move-constructed instance to register successfully\n";
+        return 1;
+    }
+
+    fricp::FastRobustIcp assigned;
+    assigned = std::move(moved);
+    if (!assigned.IsTrained()) {
+        std::cerr << "expected move assignment to preserve training state\n";
+        return 1;
+    }
+
+    if (!assigned.Register(source, options, result)) {
+        std::cerr << "expected move-assigned instance to register successfully\n";
+        return 1;
+    }
+
+    return 0;
+}
+
 int TestPointToPlaneTrainOnceRegisterTwice() {
     auto target = MakeLShapeCloud();
     auto source_a = target;
@@ -629,6 +680,9 @@ int main() {
         return 1;
     }
     if (TestPointToPointRecoversKnownTransform() != 0) {
+        return 1;
+    }
+    if (TestMoveSemanticsPreserveTrainingState() != 0) {
         return 1;
     }
     if (TestPointToPointRegisterRejectsModeMismatch() != 0) {

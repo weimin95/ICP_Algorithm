@@ -210,10 +210,9 @@ VectorX WelschWeights(const VectorX& residuals, double nu) {
 RobustTargetCache BuildRobustTargetCache(
         const open3d::geometry::PointCloud& target) {
     RobustTargetCache cache;
-    cache.target = target;
-    cache.target_matrix = PointCloudToMatrix(cache.target);
-    cache.target_knn_median = FindKNearestMedian(cache.target, 7);
-    cache.target_tree = std::make_unique<open3d::geometry::KDTreeFlann>(cache.target);
+    cache.target_matrix = PointCloudToMatrix(target);
+    cache.target_knn_median = FindKNearestMedian(target, 7);
+    cache.target_tree = std::make_unique<open3d::geometry::KDTreeFlann>(target);
     return cache;
 }
 
@@ -225,7 +224,7 @@ RobustResult RegisterRobustPointToPoint(
         const RobustOptions& options) {
     RobustResult result;
 
-    if (source.points_.empty() || target_cache.target.points_.empty() ||
+    if (source.points_.empty() || target_cache.target_matrix.cols() == 0 ||
         !target_cache.target_tree) {
         result.message = "source and target point clouds must not be empty";
         return result;

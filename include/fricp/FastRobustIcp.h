@@ -2,17 +2,25 @@
 
 #include <fricp/Export.h>
 #include <fricp/Types.h>
-#include <fricp/internal/TrainedData.h>
 #include <open3d/geometry/PointCloud.h>
 
 #include <memory>
 
 namespace fricp {
 
+namespace internal {
+struct TrainedData;
+}
+
 class FRICP_API FastRobustIcp {
 public:
     FastRobustIcp();
     ~FastRobustIcp();
+
+    FastRobustIcp(const FastRobustIcp&) = delete;
+    FastRobustIcp& operator=(const FastRobustIcp&) = delete;
+    FastRobustIcp(FastRobustIcp&&) noexcept;
+    FastRobustIcp& operator=(FastRobustIcp&&) noexcept;
 
     bool Train(const open3d::geometry::PointCloud& target,
                const RegistrationOptions& options);

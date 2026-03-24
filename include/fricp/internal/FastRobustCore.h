@@ -28,7 +28,6 @@ struct RobustResult {
 };
 
 struct RobustTargetCache {
-    open3d::geometry::PointCloud target;
     Eigen::Matrix<double, 3, Eigen::Dynamic> target_matrix;
     double target_knn_median = 0.0;
     std::unique_ptr<open3d::geometry::KDTreeFlann> target_tree;

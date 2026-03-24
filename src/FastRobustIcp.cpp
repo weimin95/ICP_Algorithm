@@ -1,6 +1,7 @@
 #include <fricp/FastRobustIcp.h>
 
 #include <fricp/internal/FastRobustCore.h>
+#include <fricp/internal/TrainedData.h>
 
 #include <open3d/geometry/KDTreeSearchParam.h>
 #include <open3d/pipelines/registration/Registration.h>
@@ -13,6 +14,10 @@ namespace fricp {
 FastRobustIcp::FastRobustIcp() = default;
 
 FastRobustIcp::~FastRobustIcp() = default;
+
+FastRobustIcp::FastRobustIcp(FastRobustIcp&&) noexcept = default;
+
+FastRobustIcp& FastRobustIcp::operator=(FastRobustIcp&&) noexcept = default;
 
 bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
                           const RegistrationOptions& options) {
