@@ -1,0 +1,13 @@
+build/
+.deps/
+.vs/
+*.user
+*.VC.db
+*.VC.opendb
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
