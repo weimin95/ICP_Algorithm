@@ -75,6 +75,12 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
         return false;
     }
 
+    if (trained_data_->mode != options.mode) {
+        last_error_ = "trained mode does not match registration mode";
+        result.message = last_error_;
+        return false;
+    }
+
     if (options.mode == RegistrationMode::PointToPlane &&
         target.normals_.empty() &&
         !options.estimate_target_normals_if_missing) {

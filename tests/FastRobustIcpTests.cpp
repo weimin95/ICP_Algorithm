@@ -456,6 +456,40 @@ int TestTrainSetsTrainedState() {
     return 0;
 }
 
+int TestPointToPointRegisterRejectsModeMismatch() {
+    open3d::geometry::PointCloud target = MakeCubeCloud();
+    open3d::geometry::PointCloud source = target;
+    source.Transform(MakeKnownTransform());
+
+    fricp::FastRobustIcp icp;
+    fricp::RegistrationOptions train_options;
+    fricp::RegistrationOptions register_options;
+    fricp::RegistrationResult result;
+
+    train_options.mode = fricp::RegistrationMode::PointToPoint;
+    train_options.max_correspondence_distance = 2.0;
+    register_options.mode = fricp::RegistrationMode::RobustPointToPoint;
+    register_options.max_correspondence_distance = 2.0;
+    register_options.max_iteration = 100;
+
+    if (!icp.Train(target, train_options)) {
+        std::cerr << "expected training to succeed for mode mismatch test\n";
+        return 1;
+    }
+
+    if (icp.Register(source, register_options, result)) {
+        std::cerr << "expected register to reject a mismatched mode\n";
+        return 1;
+    }
+
+    if (result.message.find("mode") == std::string::npos) {
+        std::cerr << "expected mode mismatch error message\n";
+        return 1;
+    }
+
+    return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -487,6 +521,9 @@ int main() {
         return 1;
     }
     if (TestPointToPointRecoversKnownTransform() != 0) {
+        return 1;
+    }
+    if (TestPointToPointRegisterRejectsModeMismatch() != 0) {
         return 1;
     }
     if (TestPointToPlaneEstimatesTargetNormals() != 0) {
