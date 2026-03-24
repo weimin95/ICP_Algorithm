@@ -494,6 +494,52 @@ int TestRobustModeBeatsPointToPointWithOutliers() {
     return 0;
 }
 
+int TestRobustModeTrainOnceRegisterTwice() {
+    open3d::geometry::PointCloud target = MakeCubeCloud();
+    open3d::geometry::PointCloud source_a = target;
+    open3d::geometry::PointCloud source_b = target;
+
+    const Eigen::Matrix4d transform = MakeKnownTransform();
+    source_a.Transform(transform);
+    source_b.Transform(transform);
+
+    fricp::FastRobustIcp icp;
+    fricp::RegistrationOptions options;
+    fricp::RegistrationResult result_a;
+    fricp::RegistrationResult result_b;
+
+    options.mode = fricp::RegistrationMode::RobustPointToPoint;
+    options.max_correspondence_distance = 6.0;
+    options.max_iteration = 100;
+
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected robust training to succeed once\n";
+        return 1;
+    }
+
+    if (!icp.Register(source_a, options, result_a)) {
+        std::cerr << "expected first robust registration to succeed\n";
+        return 1;
+    }
+    if (!icp.Register(source_b, options, result_b)) {
+        std::cerr << "expected second robust registration to succeed\n";
+        return 1;
+    }
+
+    const Eigen::Matrix4d expected_a = transform.inverse();
+    const Eigen::Matrix4d expected_b = transform.inverse();
+    if ((result_a.transformation - expected_a).cwiseAbs().maxCoeff() > 1e-2) {
+        std::cerr << "expected first robust transform recovery\n";
+        return 1;
+    }
+    if ((result_b.transformation - expected_b).cwiseAbs().maxCoeff() > 1e-2) {
+        std::cerr << "expected second robust transform recovery\n";
+        return 1;
+    }
+
+    return 0;
+}
+
 int TestTrainSetsTrainedState() {
     fricp::FastRobustIcp icp;
     const open3d::geometry::PointCloud target = MakeCubeCloud();
@@ -598,6 +644,9 @@ int main() {
         return 1;
     }
     if (TestRobustModeRecoversKnownTransform() != 0) {
+        return 1;
+    }
+    if (TestRobustModeTrainOnceRegisterTwice() != 0) {
         return 1;
     }
     if (TestRobustModeBeatsPointToPointWithOutliers() != 0) {

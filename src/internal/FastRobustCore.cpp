@@ -207,24 +207,35 @@ VectorX WelschWeights(const VectorX& residuals, double nu) {
 
 }  // namespace
 
+RobustTargetCache BuildRobustTargetCache(
+        const open3d::geometry::PointCloud& target) {
+    RobustTargetCache cache;
+    cache.target = target;
+    cache.target_matrix = PointCloudToMatrix(cache.target);
+    cache.target_knn_median = FindKNearestMedian(cache.target, 7);
+    cache.target_tree = std::make_unique<open3d::geometry::KDTreeFlann>(cache.target);
+    return cache;
+}
+
 RobustResult RegisterRobustPointToPoint(
         const open3d::geometry::PointCloud& source,
-        const open3d::geometry::PointCloud& target,
+        const RobustTargetCache& target_cache,
         const Eigen::Matrix4d& initial_transform,
         bool use_initial_transform,
         const RobustOptions& options) {
     RobustResult result;
 
-    if (source.points_.empty() || target.points_.empty()) {
+    if (source.points_.empty() || target_cache.target.points_.empty() ||
+        !target_cache.target_tree) {
         result.message = "source and target point clouds must not be empty";
         return result;
     }
 
     Matrix3X source_matrix = PointCloudToMatrix(source);
-    const Matrix3X target_matrix = PointCloudToMatrix(target);
+    const Matrix3X& target_matrix = target_cache.target_matrix;
     const Matrix3X original_source = source_matrix;
 
-    open3d::geometry::KDTreeFlann target_tree(target);
+    const open3d::geometry::KDTreeFlann& target_tree = *target_cache.target_tree;
     Eigen::Matrix4d total_transform =
             use_initial_transform ? initial_transform : Eigen::Matrix4d::Identity();
     source_matrix = TransformPoints(source_matrix, total_transform);
@@ -241,14 +252,14 @@ RobustResult RegisterRobustPointToPoint(
         for (Eigen::Index i = 0; i < source_matrix.cols(); ++i) {
             const Eigen::Vector3d query = source_matrix.col(i);
             target_tree.SearchKNN(query, 1, indices, distances);
-            correspondences.col(i) = target.points_[static_cast<size_t>(indices[0])];
+            correspondences.col(i) = target_matrix.col(indices[0]);
             residuals[i] = std::sqrt(distances[0]);
         }
     };
 
     update_correspondences();
 
-    const double nu_target = options.nu_end_k * FindKNearestMedian(target, 7);
+    const double nu_target = options.nu_end_k * target_cache.target_knn_median;
     double nu = std::max(options.nu_begin_k * Median(residuals), nu_target);
     if (nu <= 0.0) {
         nu = 1.0;

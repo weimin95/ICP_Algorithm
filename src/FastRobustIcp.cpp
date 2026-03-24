@@ -37,6 +37,11 @@ bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
     trained_data->options = options;
     trained_data->target = target;
 
+    if (options.mode == RegistrationMode::RobustPointToPoint) {
+        trained_data->robust_target_cache =
+                internal::BuildRobustTargetCache(target);
+    }
+
     if (options.mode == RegistrationMode::PointToPlane) {
         trained_data->target_with_normals = target;
         if (trained_data->target_with_normals.normals_.empty()) {
@@ -158,7 +163,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
         robust_options.use_anderson = options.robust_use_anderson;
 
         const auto robust_result = internal::RegisterRobustPointToPoint(
-                source, target, options.initial_transform,
+                source, trained_data_->robust_target_cache, options.initial_transform,
                 options.use_initial_transform, robust_options);
         if (!robust_result.success) {
             last_error_ = robust_result.message;
