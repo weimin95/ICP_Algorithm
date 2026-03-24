@@ -88,6 +88,24 @@ int TestConstructionStartsUntrained() {
     return 0;
 }
 
+int TestFailedTrainLeavesObjectUntrained() {
+    fricp::FastRobustIcp icp;
+    open3d::geometry::PointCloud empty_target;
+    fricp::RegistrationOptions options;
+    if (icp.Train(empty_target, options)) return 1;
+    return icp.IsTrained() ? 1 : 0;
+}
+
+int TestRetrainOverwritesOldTraining() {
+    fricp::FastRobustIcp icp;
+    auto first_target = MakeCubeCloud();
+    auto second_target = MakeLShapeCloud();
+    fricp::RegistrationOptions options;
+    if (!icp.Train(first_target, options)) return 1;
+    if (!icp.Train(second_target, options)) return 1;
+    return icp.IsTrained() ? 0 : 1;
+}
+
 int TestTrainRejectsEmptyTargetLeavesInstanceUntrained() {
     fricp::FastRobustIcp icp;
     const open3d::geometry::PointCloud target;
@@ -415,6 +433,12 @@ int TestTrainSetsTrainedState() {
 
 int main() {
     if (TestConstructionStartsUntrained() != 0) {
+        return 1;
+    }
+    if (TestFailedTrainLeavesObjectUntrained() != 0) {
+        return 1;
+    }
+    if (TestRetrainOverwritesOldTraining() != 0) {
         return 1;
     }
     if (TestTrainRejectsEmptyTargetLeavesInstanceUntrained() != 0) {

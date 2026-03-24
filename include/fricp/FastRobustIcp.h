@@ -2,7 +2,10 @@
 
 #include <fricp/Export.h>
 #include <fricp/Types.h>
+#include <fricp/internal/TrainedData.h>
 #include <open3d/geometry/PointCloud.h>
+
+#include <memory>
 
 namespace fricp {
 
@@ -24,9 +27,7 @@ public:
 
 private:
     mutable std::string last_error_;
-    open3d::geometry::PointCloud trained_target_;
-    RegistrationOptions trained_options_;
-    bool is_trained_ = false;
+    std::unique_ptr<internal::TrainedData> trained_data_;
 };
 
 }  // namespace fricp

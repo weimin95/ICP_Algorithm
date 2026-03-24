@@ -6,17 +6,71 @@
 #include <open3d/pipelines/registration/Registration.h>
 #include <open3d/pipelines/registration/TransformationEstimation.h>
 
+#include <memory>
+
 namespace fricp {
 
 FastRobustIcp::FastRobustIcp() = default;
 
 FastRobustIcp::~FastRobustIcp() = default;
 
+bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
+                          const RegistrationOptions& options) {
+    if (target.points_.empty()) {
+        last_error_ = "target point cloud must not be empty";
+        ClearTraining();
+        return false;
+    }
+
+    if (options.mode == RegistrationMode::PointToPlane &&
+        target.normals_.empty() &&
+        !options.estimate_target_normals_if_missing) {
+        last_error_ =
+                "target point cloud normals are required for point-to-plane mode";
+        ClearTraining();
+        return false;
+    }
+
+    auto trained_data = std::make_unique<internal::TrainedData>();
+    trained_data->is_trained = true;
+    trained_data->mode = options.mode;
+    trained_data->options = options;
+    trained_data->target = target;
+    trained_data->target_with_normals = target;
+    if (options.mode == RegistrationMode::PointToPlane &&
+        trained_data->target_with_normals.normals_.empty() &&
+        options.estimate_target_normals_if_missing) {
+        trained_data->target_with_normals.EstimateNormals(
+                open3d::geometry::KDTreeSearchParamHybrid(options.normal_radius,
+                                                          options.normal_knn));
+    }
+
+    trained_data_ = std::move(trained_data);
+    last_error_.clear();
+    return true;
+}
+
+void FastRobustIcp::ClearTraining() {
+    trained_data_.reset();
+}
+
+bool FastRobustIcp::IsTrained() const {
+    return trained_data_ && trained_data_->is_trained;
+}
+
 bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
-                             const open3d::geometry::PointCloud& target,
                              const RegistrationOptions& options,
                              RegistrationResult& result) const {
     result = RegistrationResult {};
+
+    if (!IsTrained()) {
+        last_error_ = "call Train(...) before Register(...)";
+        result.message = last_error_;
+        return false;
+    }
+
+    const auto& target = trained_data_->target;
+
     if (source.points_.empty() || target.points_.empty()) {
         last_error_ = "source and target point clouds must not be empty";
         result.message = last_error_;
@@ -32,7 +86,8 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
     if (options.mode == RegistrationMode::PointToPlane &&
         target.normals_.empty() &&
         !options.estimate_target_normals_if_missing) {
-        last_error_ = "target point cloud normals are required for point-to-plane mode";
+        last_error_ =
+                "target point cloud normals are required for point-to-plane mode";
         result.message = last_error_;
         return false;
     }
@@ -62,8 +117,9 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
     }
 
     if (options.mode == RegistrationMode::PointToPlane) {
-        open3d::geometry::PointCloud target_copy = target;
+        open3d::geometry::PointCloud target_copy = trained_data_->target_with_normals;
         if (target_copy.normals_.empty()) {
+            target_copy = target;
             target_copy.EstimateNormals(open3d::geometry::KDTreeSearchParamHybrid(
                     options.normal_radius, options.normal_knn));
         }
