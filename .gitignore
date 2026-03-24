@@ -1,5 +1,6 @@
 build/
 .deps/
+.worktrees/
 .vs/
 docs/plans/
 *.user
