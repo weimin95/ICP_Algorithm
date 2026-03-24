@@ -14,6 +14,66 @@ static_assert(std::is_move_assignable_v<fricp::FastRobustIcp>);
 
 namespace {
 
+int TestAllMethodsAreAddressable() {
+    using fricp::RegistrationMethod;
+    const std::vector<RegistrationMethod> methods = {
+            RegistrationMethod::ICP,
+            RegistrationMethod::AAICP,
+            RegistrationMethod::FastICP,
+            RegistrationMethod::RobustICP,
+            RegistrationMethod::PointToPlane,
+            RegistrationMethod::RobustPointToPlane,
+            RegistrationMethod::SparseICP,
+            RegistrationMethod::SparsePointToPlane,
+    };
+    return methods.size() == 8 ? 0 : 1;
+}
+
+int TestOptionsExposeUpstreamAlignedFields() {
+    fricp::RegistrationOptions options;
+    options.method = fricp::RegistrationMethod::RobustICP;
+    options.max_icp = 33;
+    options.max_outer = 2;
+    options.stop = 1e-6;
+    options.p = 0.25;
+    options.anderson_m = 7;
+    options.beta = 0.8;
+    options.error_overflow_threshold = 0.02;
+    options.nu_begin_k = 4.0;
+    options.nu_end_k = 0.2;
+    options.nu_alpha = 0.4;
+    options.sicp_use_penalty = true;
+    options.sicp_mu = 12.0;
+    options.sicp_alpha = 1.5;
+    options.sicp_max_mu = 1e6;
+    options.sicp_max_icp = 80;
+    options.sicp_max_outer = 30;
+    options.sicp_max_inner = 4;
+    options.sicp_p = 0.3;
+
+    return options.method == fricp::RegistrationMethod::RobustICP &&
+                   options.max_icp == 33 &&
+                   options.max_outer == 2 &&
+                   options.stop == 1e-6 &&
+                   options.p == 0.25 &&
+                   options.anderson_m == 7 &&
+                   options.beta == 0.8 &&
+                   options.error_overflow_threshold == 0.02 &&
+                   options.nu_begin_k == 4.0 &&
+                   options.nu_end_k == 0.2 &&
+                   options.nu_alpha == 0.4 &&
+                   options.sicp_use_penalty &&
+                   options.sicp_mu == 12.0 &&
+                   options.sicp_alpha == 1.5 &&
+                   options.sicp_max_mu == 1e6 &&
+                   options.sicp_max_icp == 80 &&
+                   options.sicp_max_outer == 30 &&
+                   options.sicp_max_inner == 4 &&
+                   options.sicp_p == 0.3
+           ? 0
+           : 1;
+}
+
 open3d::geometry::PointCloud MakeCubeCloud() {
     open3d::geometry::PointCloud cloud;
     cloud.points_ = {
@@ -122,9 +182,9 @@ int TestRetrainOverwritesOldTraining() {
     fricp::RegistrationOptions options;
     fricp::RegistrationResult result;
 
-    options.mode = fricp::RegistrationMode::PointToPoint;
+    options.method = fricp::RegistrationMethod::ICP;
     options.max_correspondence_distance = 1.0;
-    options.max_iteration = 50;
+    options.max_icp = 50;
 
     if (!icp.Train(first_target, options)) return 1;
     if (!icp.Train(second_target, options)) return 1;
@@ -260,7 +320,7 @@ int TestRejectsPointToPlaneWithoutNormalsWhenDisabled() {
 
     target.points_.push_back({0.0, 0.0, 0.0});
     fricp::RegistrationOptions options;
-    options.mode = fricp::RegistrationMode::PointToPlane;
+    options.method = fricp::RegistrationMethod::PointToPlane;
     options.estimate_target_normals_if_missing = false;
 
     if (icp.IsTrained()) {
@@ -295,9 +355,9 @@ int TestPointToPointRecoversKnownTransform() {
     fricp::RegistrationOptions options;
     fricp::RegistrationResult result;
 
-    options.mode = fricp::RegistrationMode::PointToPoint;
+    options.method = fricp::RegistrationMethod::ICP;
     options.max_correspondence_distance = 2.0;
-    options.max_iteration = 100;
+    options.max_icp = 100;
 
     if (!icp.Train(target, options)) {
         std::cerr << "expected training to succeed for point-to-point test\n";
@@ -334,9 +394,9 @@ int TestPointToPlaneEstimatesTargetNormals() {
     fricp::RegistrationOptions options;
     fricp::RegistrationResult result;
 
-    options.mode = fricp::RegistrationMode::PointToPlane;
+    options.method = fricp::RegistrationMethod::PointToPlane;
     options.max_correspondence_distance = 0.3;
-    options.max_iteration = 100;
+    options.max_icp = 100;
     options.estimate_target_normals_if_missing = true;
     options.normal_radius = 0.25;
     options.normal_knn = 20;
@@ -368,9 +428,9 @@ int TestMoveSemanticsPreserveTrainingState() {
     fricp::RegistrationOptions options;
     fricp::RegistrationResult result;
 
-    options.mode = fricp::RegistrationMode::PointToPoint;
+    options.method = fricp::RegistrationMethod::ICP;
     options.max_correspondence_distance = 2.0;
-    options.max_iteration = 100;
+    options.max_icp = 100;
 
     if (!icp.Train(target, options)) {
         std::cerr << "expected training to succeed before move construction\n";
@@ -418,14 +478,14 @@ int TestPointToPlaneTrainOnceRegisterTwice() {
 
     fricp::FastRobustIcp icp;
     fricp::RegistrationOptions train_options;
-    train_options.mode = fricp::RegistrationMode::PointToPlane;
+    train_options.method = fricp::RegistrationMethod::PointToPlane;
     train_options.max_correspondence_distance = 0.3;
     train_options.estimate_target_normals_if_missing = true;
     train_options.normal_radius = 0.25;
     train_options.normal_knn = 20;
 
     fricp::RegistrationOptions register_options;
-    register_options.mode = fricp::RegistrationMode::PointToPlane;
+    register_options.method = fricp::RegistrationMethod::PointToPlane;
     register_options.max_correspondence_distance = 0.3;
     register_options.estimate_target_normals_if_missing = false;
 
@@ -454,9 +514,9 @@ int TestPointToPlaneRegisterFailsAfterPointToPointTraining() {
     auto target = MakeCubeCloud();
     auto source = target;
     fricp::RegistrationOptions train_options;
-    train_options.mode = fricp::RegistrationMode::PointToPoint;
+    train_options.method = fricp::RegistrationMethod::ICP;
     fricp::RegistrationOptions register_options;
-    register_options.mode = fricp::RegistrationMode::PointToPlane;
+    register_options.method = fricp::RegistrationMethod::PointToPlane;
     register_options.max_correspondence_distance = 1.0;
     fricp::RegistrationResult result;
 
@@ -474,9 +534,9 @@ int TestRobustModeRecoversKnownTransform() {
     fricp::RegistrationOptions options;
     fricp::RegistrationResult result;
 
-    options.mode = fricp::RegistrationMode::RobustPointToPoint;
+    options.method = fricp::RegistrationMethod::RobustICP;
     options.max_correspondence_distance = 2.0;
-    options.max_iteration = 100;
+    options.max_icp = 100;
 
     if (!icp.Train(target, options)) {
         std::cerr << "expected training to succeed for robust test\n";
@@ -508,12 +568,12 @@ int TestRobustModeBeatsPointToPointWithOutliers() {
     fricp::RegistrationResult robust_result;
 
     fricp::RegistrationOptions point_to_point_options;
-    point_to_point_options.mode = fricp::RegistrationMode::PointToPoint;
+    point_to_point_options.method = fricp::RegistrationMethod::ICP;
     point_to_point_options.max_correspondence_distance = 6.0;
-    point_to_point_options.max_iteration = 100;
+    point_to_point_options.max_icp = 100;
 
     fricp::RegistrationOptions robust_options = point_to_point_options;
-    robust_options.mode = fricp::RegistrationMode::RobustPointToPoint;
+    robust_options.method = fricp::RegistrationMethod::RobustICP;
 
     if (!icp.Train(target, point_to_point_options)) {
         std::cerr << "expected training to succeed for outlier point-to-point test\n";
@@ -559,9 +619,9 @@ int TestRobustModeTrainOnceRegisterTwice() {
     fricp::RegistrationResult result_a;
     fricp::RegistrationResult result_b;
 
-    options.mode = fricp::RegistrationMode::RobustPointToPoint;
+    options.method = fricp::RegistrationMethod::RobustICP;
     options.max_correspondence_distance = 6.0;
-    options.max_iteration = 100;
+    options.max_icp = 100;
 
     if (!icp.Train(target, options)) {
         std::cerr << "expected robust training to succeed once\n";
@@ -625,11 +685,11 @@ int TestPointToPointRegisterRejectsModeMismatch() {
     fricp::RegistrationOptions register_options;
     fricp::RegistrationResult result;
 
-    train_options.mode = fricp::RegistrationMode::PointToPoint;
+    train_options.method = fricp::RegistrationMethod::ICP;
     train_options.max_correspondence_distance = 2.0;
-    register_options.mode = fricp::RegistrationMode::RobustPointToPoint;
+    register_options.method = fricp::RegistrationMethod::RobustICP;
     register_options.max_correspondence_distance = 2.0;
-    register_options.max_iteration = 100;
+    register_options.max_icp = 100;
 
     if (!icp.Train(target, train_options)) {
         std::cerr << "expected training to succeed for mode mismatch test\n";
@@ -652,6 +712,12 @@ int TestPointToPointRegisterRejectsModeMismatch() {
 }  // namespace
 
 int main() {
+    if (TestAllMethodsAreAddressable() != 0) {
+        return 1;
+    }
+    if (TestOptionsExposeUpstreamAlignedFields() != 0) {
+        return 1;
+    }
     if (TestConstructionStartsUntrained() != 0) {
         return 1;
     }

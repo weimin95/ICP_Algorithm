@@ -9,7 +9,7 @@ namespace fricp::internal {
 
 struct TrainedData {
     bool is_trained = false;
-    RegistrationMode mode = RegistrationMode::PointToPoint;
+    RegistrationMethod method = RegistrationMethod::ICP;
     RegistrationOptions options;
     open3d::geometry::PointCloud target;
     // Cached target cloud for point-to-plane registration.

@@ -22,6 +22,7 @@ public:
     FastRobustIcp(FastRobustIcp&&) noexcept;
     FastRobustIcp& operator=(FastRobustIcp&&) noexcept;
 
+    // Cache a target cloud for repeated registrations with one configured method.
     bool Train(const open3d::geometry::PointCloud& target,
                const RegistrationOptions& options);
     void ClearTraining();
