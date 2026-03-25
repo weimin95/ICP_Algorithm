@@ -15,6 +15,7 @@ if(NOT Open3D_DIR)
 endif()
 
 find_package(Open3D CONFIG REQUIRED)
+find_package(OpenMP QUIET)
 
 get_filename_component(_fricp_open3d_root "${Open3D_DIR}" DIRECTORY)
 file(GLOB _fricp_open3d_runtime_dlls
@@ -63,6 +64,10 @@ target_link_libraries(fricp
         Open3D::Open3D
 )
 
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(fricp PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
 target_compile_definitions(fricp
     PRIVATE
         FRICP_BUILD_DLL
@@ -90,6 +95,15 @@ function(fricp_enable_bigobj target_name)
     endif()
 endfunction()
 
+function(fricp_enable_utf8_source target_name)
+    if(MSVC)
+        target_compile_options(${target_name}
+            PRIVATE
+                /utf-8
+        )
+    endif()
+endfunction()
+
 function(fricp_copy_runtime_dlls target_name)
     foreach(runtime_dll IN LISTS _fricp_open3d_runtime_dlls)
         add_custom_command(TARGET ${target_name} POST_BUILD
@@ -101,6 +115,7 @@ function(fricp_copy_runtime_dlls target_name)
     endforeach()
 endfunction()
 
+fricp_enable_utf8_source(fricp)
 fricp_enable_bigobj(fricp)
 fricp_enable_release_debug_symbols(fricp)
 fricp_copy_runtime_dlls(fricp)
@@ -130,6 +145,7 @@ if(MSVC)
     )
 endif()
 
+fricp_enable_utf8_source(fricp_tests)
 fricp_enable_bigobj(fricp_tests)
 fricp_enable_release_debug_symbols(fricp_tests)
 fricp_copy_runtime_dlls(fricp_tests)
@@ -143,9 +159,34 @@ target_link_libraries(fricp_example
         fricp
 )
 
+if(MSVC)
+    target_compile_options(fricp_example
+        PRIVATE
+            $<$<CONFIG:Release>:/Od>
+            $<$<CONFIG:Release>:/Ob0>
+    )
+endif()
+
+fricp_enable_utf8_source(fricp_example)
+fricp_enable_bigobj(fricp_example)
+fricp_enable_release_debug_symbols(fricp_example)
 fricp_copy_runtime_dlls(fricp_example)
 
 include(CTest)
 if(BUILD_TESTING)
     add_test(NAME fricp_tests COMMAND fricp_tests)
+    if(MSVC)
+        add_test(
+            NAME fricp_openmp_project
+            COMMAND ${CMAKE_COMMAND}
+                -DPROJECT_FILE=${CMAKE_BINARY_DIR}/fricp.vcxproj
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/VerifyMsvcOpenMpProject.cmake
+        )
+        add_test(
+            NAME fricp_example_utf8_project
+            COMMAND ${CMAKE_COMMAND}
+                -DPROJECT_FILE=${CMAKE_BINARY_DIR}/fricp_example.vcxproj
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/VerifyMsvcUtf8Project.cmake
+        )
+    endif()
 endif()

@@ -47,16 +47,19 @@ void PopulateResult(const RegistrationOptions& options,
                     double convergence_energy,
                     int iteration_count,
                     RegistrationResult& result) {
-    const auto evaluation =
-            open3d::pipelines::registration::EvaluateRegistration(
-                    source, target, options.max_correspondence_distance,
-                    transformation);
-
     result.success = true;
     result.method = method;
     result.transformation = transformation;
-    result.fitness = evaluation.fitness_;
-    result.inlier_rmse = evaluation.inlier_rmse_;
+    result.fitness = 0.0;
+    result.inlier_rmse = 0.0;
+    if (options.compute_registration_metrics) {
+        const auto evaluation =
+                open3d::pipelines::registration::EvaluateRegistration(
+                        source, target, options.max_correspondence_distance,
+                        transformation);
+        result.fitness = evaluation.fitness_;
+        result.inlier_rmse = evaluation.inlier_rmse_;
+    }
     result.convergence_energy = convergence_energy;
     result.iteration_count = iteration_count;
     result.message = "ok";
@@ -151,6 +154,9 @@ bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
     trained_data->method = options.method;
     trained_data->options = options;
     trained_data->target = target;
+    trained_data->target_matrix = internal::PointCloudToMatrix(target);
+    trained_data->target_bbox =
+            internal::ComputeBoundingBoxStatistics(trained_data->target_matrix);
 
     if (NeedsTargetNormals(options.method)) {
         trained_data->cached_target_normals = target;
@@ -165,6 +171,8 @@ bool FastRobustIcp::Train(const open3d::geometry::PointCloud& target,
             ClearTraining();
             return false;
         }
+        trained_data->target_normals_matrix =
+                internal::NormalsToMatrix(trained_data->cached_target_normals);
     }
 
     trained_data_ = std::move(trained_data);
@@ -234,7 +242,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
     }
 
     auto source_matrix = internal::PointCloudToMatrix(source);
-    auto target_matrix = internal::PointCloudToMatrix(target);
+    auto target_matrix = trained_data_->target_matrix;
     const auto normalization =
             internal::NormalizeSharedSourceTarget(source_matrix, target_matrix);
     const Eigen::Matrix4d adapted_initial_transform =
@@ -311,8 +319,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
 
             auto source_normals =
                     MakeSourceNormals(source, source_matrix.cols());
-            auto target_normals =
-                    internal::NormalsToMatrix(trained_data_->cached_target_normals);
+            auto target_normals = trained_data_->target_normals_matrix;
 
             ::FRICP<3> fricp;
             if (options.method == RegistrationMethod::PointToPlane) {
@@ -343,8 +350,7 @@ bool FastRobustIcp::Register(const open3d::geometry::PointCloud& source,
                     result.message = last_error_;
                     return false;
                 }
-                auto target_normals =
-                        internal::NormalsToMatrix(trained_data_->cached_target_normals);
+                auto target_normals = trained_data_->target_normals_matrix;
                 ::SICP::point_to_plane(source_matrix, target_matrix, target_normals,
                                        source_mean, target_mean, parameters);
             }

@@ -21,6 +21,7 @@ struct RegistrationOptions {
     RegistrationMethod method = RegistrationMethod::RobustICP;
     // Wrapper-only validation/result evaluation for upstream methods.
     double max_correspondence_distance = 0.05;
+    bool compute_registration_metrics = true;
 
     bool use_initial_transform = false;
     Eigen::Matrix4d initial_transform = Eigen::Matrix4d::Identity();

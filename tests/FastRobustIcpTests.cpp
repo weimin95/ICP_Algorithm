@@ -1083,6 +1083,38 @@ int TestRobustModeTrainOnceRegisterTwice() {
     return 0;
 }
 
+int TestRegisterCanSkipMetrics() {
+    open3d::geometry::PointCloud target = MakeCubeCloud();
+    open3d::geometry::PointCloud source = target;
+    source.Transform(MakeKnownTransform());
+
+    fricp::FastRobustIcp icp;
+    fricp::RegistrationOptions options;
+    fricp::RegistrationResult result;
+
+    options.method = fricp::RegistrationMethod::ICP;
+    options.max_correspondence_distance = 2.0;
+    options.max_icp = 100;
+    options.compute_registration_metrics = false;
+
+    if (!icp.Train(target, options)) {
+        std::cerr << "expected training to succeed for metric skip test\n";
+        return 1;
+    }
+
+    if (!icp.Register(source, options, result)) {
+        std::cerr << "expected registration to succeed for metric skip test\n";
+        return 1;
+    }
+
+    if (result.fitness != 0.0 || result.inlier_rmse != 0.0) {
+        std::cerr << "expected metrics to remain at defaults when disabled\n";
+        return 1;
+    }
+
+    return result.success ? 0 : 1;
+}
+
 int TestTrainSetsTrainedState() {
     fricp::FastRobustIcp icp;
     const open3d::geometry::PointCloud target = MakeCubeCloud();
@@ -1241,6 +1273,9 @@ int main() {
         return 1;
     }
     if (TestRobustModeTrainOnceRegisterTwice() != 0) {
+        return 1;
+    }
+    if (TestRegisterCanSkipMetrics() != 0) {
         return 1;
     }
     if (TestRobustModeBeatsPointToPointWithOutliers() != 0) {
