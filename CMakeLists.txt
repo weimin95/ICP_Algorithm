@@ -68,6 +68,28 @@ target_compile_definitions(fricp
         FRICP_BUILD_DLL
 )
 
+function(fricp_enable_release_debug_symbols target_name)
+    if(MSVC)
+        target_compile_options(${target_name}
+            PRIVATE
+                $<$<CONFIG:Release>:/Zi>
+        )
+        target_link_options(${target_name}
+            PRIVATE
+                $<$<CONFIG:Release>:/DEBUG:FULL>
+        )
+    endif()
+endfunction()
+
+function(fricp_enable_bigobj target_name)
+    if(MSVC)
+        target_compile_options(${target_name}
+            PRIVATE
+                /bigobj
+        )
+    endif()
+endfunction()
+
 function(fricp_copy_runtime_dlls target_name)
     foreach(runtime_dll IN LISTS _fricp_open3d_runtime_dlls)
         add_custom_command(TARGET ${target_name} POST_BUILD
@@ -79,6 +101,8 @@ function(fricp_copy_runtime_dlls target_name)
     endforeach()
 endfunction()
 
+fricp_enable_bigobj(fricp)
+fricp_enable_release_debug_symbols(fricp)
 fricp_copy_runtime_dlls(fricp)
 
 add_executable(fricp_tests
@@ -98,6 +122,16 @@ target_include_directories(fricp_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/fast_robust_icp
 )
 
+if(MSVC)
+    target_compile_options(fricp_tests
+        PRIVATE
+            $<$<CONFIG:Release>:/Od>
+            $<$<CONFIG:Release>:/Ob0>
+    )
+endif()
+
+fricp_enable_bigobj(fricp_tests)
+fricp_enable_release_debug_symbols(fricp_tests)
 fricp_copy_runtime_dlls(fricp_tests)
 
 add_executable(fricp_example
